@@ -1,0 +1,17 @@
+# Documentation Index
+
+- [Architecture](./architecture.md)
+- [Workspace & package plan](./workspace.md)
+- [Local and cloud deployment](./deploy.md)
+- [Standard audit & roadmap](./standard-audit.md)
+- [Code-first SDK](./sdk.md)
+- [Studio & WYSIWYG editing](./studio.md)
+- [Project layout & external files](../specification/project-layout.md)
+- [WYSIWYG profile](../specification/wysiwyg.md)
+- [AI generation profile](../specification/generation.md)
+- [Storyboard profile](../specification/storyboard.md)
+- [Commercial delivery profile](../specification/commercial.md)
+- [Industry alignment](../specification/industry-alignment.md)
+- [Specification](../specification/README.md)
+- [CLI](../README.md#cli)
+- [Examples](../examples/README.md)

@@ -1,0 +1,142 @@
+{
+  "version": "1.1.1",
+  "specVersion": "1.1",
+  "cases": [
+    {
+      "id": "parse-self-closing",
+      "kind": "parse",
+      "file": "parsing/self-closing.vhtml",
+      "expect": {
+        "errors": 0,
+        "assets": 2,
+        "clips": 3
+      }
+    },
+    {
+      "id": "legacy-track",
+      "kind": "parse",
+      "file": "parsing/legacy-track.vhtml",
+      "expect": {
+        "errorCode": "PARSE_HTML_AMBIGUITY"
+      }
+    },
+    {
+      "id": "external-scene",
+      "kind": "parse",
+      "file": "external/scene-src.vhtml",
+      "expect": {
+        "errors": 0,
+        "sceneSrc": "hero.html",
+        "rebased": "/pixel.svg"
+      }
+    },
+    {
+      "id": "timing-boundary",
+      "kind": "parse",
+      "file": "timing/boundary.vhtml",
+      "expect": {
+        "errors": 0,
+        "frames": 30,
+        "clipEnd": "1s"
+      }
+    },
+    {
+      "id": "editing-split-ripple",
+      "kind": "editing",
+      "file": "editing/base.vhtml",
+      "operations": [
+        {
+          "op": "clip.split",
+          "clipId": "a",
+          "at": "1s"
+        },
+        {
+          "op": "clip.rippleDelete",
+          "clipId": "a"
+        },
+        {
+          "op": "transition.add",
+          "trackId": "v",
+          "transition": {
+            "fromClipId": "a-b",
+            "toClipId": "b",
+            "type": "crossfade",
+            "duration": "0.2s",
+            "easing": "ease-in-out",
+            "direction": "left",
+            "color": "#000000",
+            "params": {}
+          }
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "clips": [
+          "a-b",
+          "b"
+        ]
+      }
+    },
+    {
+      "id": "authoring-program",
+      "kind": "program",
+      "file": "parsing/program.vhtml",
+      "expect": {
+        "errors": 0,
+        "scenes": 4,
+        "clips": 4,
+        "deterministic": true
+      }
+    },
+    {
+      "id": "timing-timeremap",
+      "kind": "timeremap",
+      "file": "timing/timeremap.vhtml",
+      "expect": {
+        "errors": 0,
+        "mediaTimeHalf": 1,
+        "mediaTimeLate": 3.5
+      }
+    },
+    {
+      "id": "editing-timeremap-split",
+      "kind": "editing",
+      "file": "editing/timeremap-split.vhtml",
+      "operations": [
+        {
+          "op": "clip.split",
+          "clipId": "ramp",
+          "at": "0.5s"
+        }
+      ],
+      "expect": {
+        "ok": true,
+        "clips": [
+          "ramp",
+          "ramp-b"
+        ],
+        "rightSourceIn": 1
+      }
+    },
+    {
+      "id": "timing-av-sync",
+      "kind": "av-sync",
+      "file": "timing/av-sync.vhtml",
+      "expect": {
+        "errors": 0,
+        "clipStartSeconds": 0.5005,
+        "audioSourceTimeAtOne": 0.5795
+      }
+    },
+    {
+      "id": "authoring-program-params",
+      "kind": "program-params",
+      "file": "parsing/program-params.vhtml",
+      "expect": {
+        "errors": 0,
+        "scenes": 3,
+        "accent": "#6ee7ff"
+      }
+    }
+  ]
+}

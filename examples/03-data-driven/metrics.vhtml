@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Data-driven metrics</title>
+    <style>
+      
+      .footer{position:absolute;left:10%;bottom:7%;font-size:15px;letter-spacing:.22em;color:#6983a8}
+      .footer b{color:#6ee7ff;font-weight:600}
+    
+    </style>
+  </head>
+  <body>
+    <vhtml version="1.1">
+      <project id="data-driven-metrics" version="1.1" title="Data-driven metrics" main-timeline="main">
+        <settings>
+          <composition width="1280" height="720" frame-rate="30" duration="9s" sample-rate="48000" channels="2" background="#050a13" color-space="srgb" seed="1"></composition>
+        </settings>
+        <scenes>
+          <scene id="metric-0" duration="2.2s">
+            <style>
+              
+  @keyframes metricIn{from{opacity:0;transform:translateY(26px) scale(.98)}to{opacity:1;transform:none}}
+  .metric{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 10%;}
+  .value{font-size:150px;line-height:1;font-weight:800;letter-spacing:-8px;color:#6ee7ff;animation:metricIn .55s cubic-bezier(.2,.8,.2,1) both}
+  .label{font-size:38px;font-weight:700;margin-top:18px;color:#fff;animation:metricIn .55s .08s both}
+  .detail{font-size:24px;color:#9fb3d9;margin-top:16px;max-width:760px;animation:metricIn .55s .16s both}
+  .rule{width:70px;height:4px;border-radius:2px;background:#6ee7ff;margin-top:36px;animation:metricIn .55s .22s both}
+  .head{position:absolute;top:70px;left:10%;font-size:14px;letter-spacing:.4em;color:#7d94b8}
+
+            </style>
+            
+      <div class="head">VHTML / DATA-DRIVEN CUT</div>
+      <div class="metric">
+        <div class="value">12.4脳</div>
+        <div class="label">faster iteration</div>
+        <div class="detail">From idea to rendered cut in one command.</div>
+        <div class="rule"></div>
+      </div>
+    
+          </scene>
+          <scene id="metric-1" duration="2.2s">
+            <style>
+              
+  @keyframes metricIn{from{opacity:0;transform:translateY(26px) scale(.98)}to{opacity:1;transform:none}}
+  .metric{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 10%;}
+  .value{font-size:150px;line-height:1;font-weight:800;letter-spacing:-8px;color:#6ee7ff;animation:metricIn .55s cubic-bezier(.2,.8,.2,1) both}
+  .label{font-size:38px;font-weight:700;margin-top:18px;color:#fff;animation:metricIn .55s .08s both}
+  .detail{font-size:24px;color:#9fb3d9;margin-top:16px;max-width:760px;animation:metricIn .55s .16s both}
+  .rule{width:70px;height:4px;border-radius:2px;background:#6ee7ff;margin-top:36px;animation:metricIn .55s .22s both}
+  .head{position:absolute;top:70px;left:10%;font-size:14px;letter-spacing:.4em;color:#7d94b8}
+
+            </style>
+            
+      <div class="head">VHTML / DATA-DRIVEN CUT</div>
+      <div class="metric">
+        <div class="value">1</div>
+        <div class="label">source of truth</div>
+        <div class="detail">A text project that reviews and diffs like code.</div>
+        <div class="rule"></div>
+      </div>
+    
+          </scene>
+          <scene id="metric-2" duration="2.2s">
+            <style>
+              
+  @keyframes metricIn{from{opacity:0;transform:translateY(26px) scale(.98)}to{opacity:1;transform:none}}
+  .metric{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 10%;}
+  .value{font-size:150px;line-height:1;font-weight:800;letter-spacing:-8px;color:#6ee7ff;animation:metricIn .55s cubic-bezier(.2,.8,.2,1) both}
+  .label{font-size:38px;font-weight:700;margin-top:18px;color:#fff;animation:metricIn .55s .08s both}
+  .detail{font-size:24px;color:#9fb3d9;margin-top:16px;max-width:760px;animation:metricIn .55s .16s both}
+  .rule{width:70px;height:4px;border-radius:2px;background:#6ee7ff;margin-top:36px;animation:metricIn .55s .22s both}
+  .head{position:absolute;top:70px;left:10%;font-size:14px;letter-spacing:.4em;color:#7d94b8}
+
+            </style>
+            
+      <div class="head">VHTML / DATA-DRIVEN CUT</div>
+      <div class="metric">
+        <div class="value">0</div>
+        <div class="label">manual exports</div>
+        <div class="detail">Deterministic frames, audio and captions together.</div>
+        <div class="rule"></div>
+      </div>
+    
+          </scene>
+          <scene id="metric-3" duration="2.2s">
+            <style>
+              
+  @keyframes metricIn{from{opacity:0;transform:translateY(26px) scale(.98)}to{opacity:1;transform:none}}
+  .metric{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 10%;}
+  .value{font-size:150px;line-height:1;font-weight:800;letter-spacing:-8px;color:#6ee7ff;animation:metricIn .55s cubic-bezier(.2,.8,.2,1) both}
+  .label{font-size:38px;font-weight:700;margin-top:18px;color:#fff;animation:metricIn .55s .08s both}
+  .detail{font-size:24px;color:#9fb3d9;margin-top:16px;max-width:760px;animation:metricIn .55s .16s both}
+  .rule{width:70px;height:4px;border-radius:2px;background:#6ee7ff;margin-top:36px;animation:metricIn .55s .22s both}
+  .head{position:absolute;top:70px;left:10%;font-size:14px;letter-spacing:.4em;color:#7d94b8}
+
+            </style>
+            
+      <div class="head">VHTML / DATA-DRIVEN CUT</div>
+      <div class="metric">
+        <div class="value">100%</div>
+        <div class="label">HTML/CSS</div>
+        <div class="detail">Use the browser engine you already know.</div>
+        <div class="rule"></div>
+      </div>
+    
+          </scene>
+        </scenes>
+        <generations>
+          <generate id="backdrop" kind="video" provider="procedural">
+            <prompt>slow abstract dark blue data field, soft moving light</prompt>
+            <constraints duration="9s" width="1280" height="720"></constraints>
+          </generate>
+        </generations>
+        <timelines>
+          <timeline id="main" duration="9s">
+            <lane id="backdrop-lane" type="video" order="0">
+              <clip id="backdrop-clip" kind="video" ref="gen:backdrop" start="0s" duration="9s" out="9s">
+              </clip>
+            </lane>
+            <lane id="metrics" type="video" order="1">
+              <clip id="metric-clip-0" kind="scene" ref="scene:metric-0" start="0s" duration="2.2s">
+                <animate id="anim-opacity-1" property="opacity" start="0s" duration="0.35s" time-base="clip" easing="linear">
+                  <keyframe at="0s" value="0"></keyframe>
+                  <keyframe at="0.35s" value="1"></keyframe>
+                </animate>
+              </clip>
+              <clip id="metric-clip-1" kind="scene" ref="scene:metric-1" start="2s" duration="2.2s">
+                <animate id="anim-opacity-2" property="opacity" start="0s" duration="0.35s" time-base="clip" easing="linear">
+                  <keyframe at="0s" value="0"></keyframe>
+                  <keyframe at="0.35s" value="1"></keyframe>
+                </animate>
+              </clip>
+              <clip id="metric-clip-2" kind="scene" ref="scene:metric-2" start="4s" duration="2.2s">
+                <animate id="anim-opacity-3" property="opacity" start="0s" duration="0.35s" time-base="clip" easing="linear">
+                  <keyframe at="0s" value="0"></keyframe>
+                  <keyframe at="0.35s" value="1"></keyframe>
+                </animate>
+              </clip>
+              <clip id="metric-clip-3" kind="scene" ref="scene:metric-3" start="6s" duration="2.2s">
+                <animate id="anim-opacity-4" property="opacity" start="0s" duration="0.35s" time-base="clip" easing="linear">
+                  <keyframe at="0s" value="0"></keyframe>
+                  <keyframe at="0.35s" value="1"></keyframe>
+                </animate>
+              </clip>
+              <transition id="transition-metrics-1" from="metric-clip-0" to="metric-clip-1" type="wipe" duration="0.2s"></transition>
+              <transition id="transition-metrics-2" from="metric-clip-1" to="metric-clip-2" type="crossfade" duration="0.2s"></transition>
+              <transition id="transition-metrics-3" from="metric-clip-2" to="metric-clip-3" type="wipe" duration="0.2s"></transition>
+            </lane>
+            <lane id="captions" type="caption" name="Captions" order="2" caption-style="font-size:26px;bottom:5%">
+              <cue id="cue-1" start="0.15s" duration="1.8s" text="12.4脳 faster iteration">
+              </cue>
+              <cue id="cue-2" start="2.15s" duration="1.8s" text="1 source of truth">
+              </cue>
+              <cue id="cue-3" start="4.15s" duration="1.8s" text="0 manual exports">
+              </cue>
+              <cue id="cue-4" start="6.15s" duration="1.8s" text="100% HTML/CSS">
+              </cue>
+            </lane>
+          </timeline>
+        </timelines>
+        <outputs>
+          <output id="output-1" format="mp4" timeline="main" width="1280" height="720" frame-rate="30" video-codec="libx264" audio-codec="aac" crf="20" sample-rate="48000" channels="2" path="out/metrics.mp4"></output>
+        </outputs>
+      </project>
+    </vhtml>
+  </body>
+</html>

@@ -1,0 +1,51 @@
+{
+  "name": "@sdkwork/vhtml-generation",
+  "version": "1.1.1",
+  "description": "VHTML generation task pipeline: procedural/manifest/HTTP providers, content-addressed cache, provenance and asset materialisation.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json",
+    "./vendors": {
+      "types": "./dist/vendors.d.ts",
+      "import": "./dist/vendors.js",
+      "default": "./dist/vendors.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ../../scripts/fix-declarations.mjs .",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@sdkwork/vhtml-core": "workspace:^",
+    "@sdkwork/vhtml-ffmpeg": "workspace:^",
+    "@sdkwork/vhtml-project": "workspace:^"
+  },
+  "keywords": [
+    "vhtml",
+    "generation",
+    "ai",
+    "procedural",
+    "cache"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

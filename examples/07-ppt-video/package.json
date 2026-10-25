@@ -1,0 +1,15 @@
+{
+  "name": "@sdkwork/vhtml-example-07-ppt-video",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vhtml build .",
+    "preview": "vhtml preview . --open",
+    "export": "vhtml export .",
+    "slides": "vhtml export . --delivery youtube-4k --report renders/report.json"
+  },
+  "dependencies": {
+    "@sdkwork/vhtml": "workspace:*"
+  }
+}

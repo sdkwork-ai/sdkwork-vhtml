@@ -1,0 +1,86 @@
+{
+  "name": "@sdkwork/vhtml-runtime",
+  "version": "1.1.1",
+  "description": "Deterministic Chromium frame runtime for VHTML: stage builder, browser clock/seek runtime, renderer, local project server and capabilities.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./evaluate": {
+      "types": "./dist/evaluate.d.ts",
+      "import": "./dist/evaluate.js",
+      "default": "./dist/evaluate.js"
+    },
+    "./stage": {
+      "types": "./dist/stage.d.ts",
+      "import": "./dist/stage.js",
+      "default": "./dist/stage.js"
+    },
+    "./renderer": {
+      "types": "./dist/renderer.d.ts",
+      "import": "./dist/renderer.js",
+      "default": "./dist/renderer.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "default": "./dist/server.js"
+    },
+    "./capabilities": {
+      "types": "./dist/capabilities.d.ts",
+      "import": "./dist/capabilities.js",
+      "default": "./dist/capabilities.js"
+    },
+    "./chrome": {
+      "types": "./dist/chrome.d.ts",
+      "import": "./dist/chrome.js",
+      "default": "./dist/chrome.js"
+    },
+    "./build": {
+      "types": "./dist/build.d.ts",
+      "import": "./dist/build.js",
+      "default": "./dist/build.js"
+    },
+    "./css": {
+      "types": "./dist/css.d.ts",
+      "import": "./dist/css.js",
+      "default": "./dist/css.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ./scripts/postbuild.mjs && node ../../scripts/fix-declarations.mjs .",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "esbuild": "^0.25.12",
+    "puppeteer-core": "^23.11.1",
+    "@sdkwork/vhtml-core": "workspace:^"
+  },
+  "keywords": [
+    "vhtml",
+    "chromium",
+    "puppeteer",
+    "renderer",
+    "deterministic"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

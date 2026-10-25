@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Programmatic edit</title>
+    <style>
+      .card{position:absolute;inset:0;display:grid;place-items:center;color:#fff;font:800 96px system-ui;letter-spacing:-4px;background:radial-gradient(900px 500px at 30% 20%,#123a63,#070c16)}
+    </style>
+  </head>
+  <body>
+    <vhtml version="1.1">
+      <project id="programmatic-edit" version="1.1" title="Programmatic edit" main-timeline="main">
+        <settings>
+          <composition width="1280" height="720" frame-rate="30" duration="6s" sample-rate="48000" channels="2" background="#08101d" color-space="srgb" seed="1"></composition>
+        </settings>
+        <scenes>
+          <scene id="a" duration="3s">
+            <div class="card">BEFORE</div>
+          </scene>
+          <scene id="b" duration="3s">
+            <div class="card" style="background:radial-gradient(900px 500px at 70% 30%,#5a2a6e,#0b0a1b)">AFTER</div>
+          </scene>
+        </scenes>
+        <timelines>
+          <timeline id="main" duration="6s">
+            <lane id="cut" type="video" order="0">
+              <clip id="a-clip-b" kind="scene" ref="scene:a" start="0s" duration="1.8s" in="1.4s">
+              </clip>
+              <clip id="b-clip" kind="scene" ref="scene:b" start="1.6s" duration="3s">
+              </clip>
+              <transition id="a-clip-b-b-clip" from="a-clip-b" to="b-clip" type="crossfade" duration="0.2s"></transition>
+            </lane>
+          </timeline>
+        </timelines>
+        <outputs>
+          <output id="output-1" format="mp4" timeline="main" width="1280" height="720" frame-rate="30" video-codec="libx264" audio-codec="aac" sample-rate="48000" channels="2" path="out/programmatic-edit.mp4"></output>
+        </outputs>
+      </project>
+    </vhtml>
+  </body>
+</html>

@@ -1,0 +1,68 @@
+{
+  "name": "@sdkwork/vhtml-project",
+  "version": "1.1.1",
+  "description": "VHTML project layout, vhtml.json manifest, external-file inventory/import/relink, inline-Scene splitting and portable .vhtmlpkg packaging.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./manifest": {
+      "types": "./dist/manifest.d.ts",
+      "import": "./dist/manifest.js",
+      "default": "./dist/manifest.js"
+    },
+    "./assets": {
+      "types": "./dist/assets.d.ts",
+      "import": "./dist/assets.js",
+      "default": "./dist/assets.js"
+    },
+    "./pack": {
+      "types": "./dist/pack.d.ts",
+      "import": "./dist/pack.js",
+      "default": "./dist/pack.js"
+    },
+    "./split": {
+      "types": "./dist/split.d.ts",
+      "import": "./dist/split.js",
+      "default": "./dist/split.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ../../scripts/fix-declarations.mjs .",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "fflate": "^0.8.3",
+    "parse5": "^7.3.0",
+    "@sdkwork/vhtml-core": "workspace:^",
+    "@sdkwork/vhtml-ffmpeg": "workspace:^"
+  },
+  "keywords": [
+    "vhtml",
+    "project",
+    "assets",
+    "manifest",
+    "zip",
+    "package"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

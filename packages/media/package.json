@@ -1,0 +1,67 @@
+{
+  "name": "@sdkwork/vhtml-media",
+  "version": "1.1.1",
+  "description": "VHTML media pipeline: sample-accurate PCM mixer, WebVTT/SRT captions, MP4/WebM/GIF/PNG/WAV/MP3 export and FFmpeg muxing.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./audio": {
+      "types": "./dist/audio.d.ts",
+      "import": "./dist/audio.js",
+      "default": "./dist/audio.js"
+    },
+    "./captions": {
+      "types": "./dist/captions.d.ts",
+      "import": "./dist/captions.js",
+      "default": "./dist/captions.js"
+    },
+    "./export": {
+      "types": "./dist/export.d.ts",
+      "import": "./dist/export.js",
+      "default": "./dist/export.js"
+    },
+    "./ffmpeg": {
+      "types": "./dist/ffmpeg.d.ts",
+      "import": "./dist/ffmpeg.js",
+      "default": "./dist/ffmpeg.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ../../scripts/fix-declarations.mjs .",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@sdkwork/vhtml-core": "workspace:^",
+    "@sdkwork/vhtml-ffmpeg": "workspace:^",
+    "@sdkwork/vhtml-runtime": "workspace:^"
+  },
+  "keywords": [
+    "vhtml",
+    "ffmpeg",
+    "audio",
+    "video",
+    "export",
+    "webvtt"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

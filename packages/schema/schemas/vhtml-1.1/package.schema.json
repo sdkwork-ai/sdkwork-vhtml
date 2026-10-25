@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vhtml.dev/schema/vhtml-1.1/package.schema.json",
+  "title": "VHTML 1.1 portable package metadata (vhtml.package.json)",
+  "type": "object",
+  "required": ["schema", "name", "entry", "packedAt", "files"],
+  "properties": {
+    "schema": { "const": "vhtml.package/1.1" },
+    "name": { "type": "string", "minLength": 1 },
+    "entry": { "type": "string", "minLength": 1 },
+    "id": { "type": "string" },
+    "packedAt": { "type": "string", "format": "date-time" },
+    "files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["path", "size", "sha256"],
+        "properties": {
+          "path": { "type": "string", "minLength": 1 },
+          "size": { "type": "integer", "minimum": 0 },
+          "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": true
+}

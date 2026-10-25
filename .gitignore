@@ -1,0 +1,37 @@
+node_modules/
+dist/
+dist-packages/
+dist-packages/**
+*.tsbuildinfo
+out/
+.vhtml-cache/
+.vhtml/
+*.vhtmlpkg
+vhtml.generated.json
+*.log
+.DS_Store
+Thumbs.db
+tests/.tmp/
+examples/**/out/
+examples/**/generated/
+
+# ---- auto-audited: local artifacts that must never be committed ----
+*.key
+*.pem
+*.p12
+*.pfx
+*.keystore
+tmp/
+temp/
+*.tmp
+*.temp
+.cache/
+.turbo/
+.next/
+coverage/
+build/
+target/
+
+# ---- generated render output and one-off probes ----
+examples/**/renders/
+.tmp-*

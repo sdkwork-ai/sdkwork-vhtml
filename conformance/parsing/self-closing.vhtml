@@ -1,0 +1,34 @@
+<!doctype html>
+<html>
+  <body>
+    <vhtml version="1.1">
+      <project id="conformance-self-closing" version="1.1">
+        <settings>
+          <composition width="320" height="180" frame-rate="30/1" duration="2s" />
+        </settings>
+        <assets>
+          <asset id="a" type="image" src="./a.png" />
+          <asset id="b" type="image" src="./b.png" />
+        </assets>
+        <scenes>
+          <scene id="s" duration="2s"><div style="color:white">Conformance</div></scene>
+        </scenes>
+        <timelines>
+          <timeline id="main" duration="2s">
+            <lane id="v" type="video">
+              <clip id="c1" ref="a" start="0s" duration="2s" />
+              <clip id="c2" ref="b" start="0.5s" duration="1s" />
+              <clip id="c3" ref="s" start="0.75s" duration="1s" />
+            </lane>
+            <lane id="cc" type="caption">
+              <cue id="q" start="0s" duration="1s" text="Cue" />
+            </lane>
+          </timeline>
+        </timelines>
+        <outputs>
+          <output id="o" format="mp4" width="320" height="180" frame-rate="30/1" />
+        </outputs>
+      </project>
+    </vhtml>
+  </body>
+</html>

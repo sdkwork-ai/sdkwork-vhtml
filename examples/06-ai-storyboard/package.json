@@ -1,0 +1,15 @@
+{
+  "name": "@sdkwork/vhtml-example-06-ai-storyboard",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vhtml build .",
+    "generate": "vhtml generate . --all",
+    "validate": "vhtml validate .",
+    "export": "vhtml export . --generate"
+  },
+  "dependencies": {
+    "@sdkwork/vhtml": "workspace:*"
+  }
+}

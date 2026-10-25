@@ -1,0 +1,9 @@
+<!doctype html>
+<html><body><vhtml version="1.1">
+<project id="conf-av-sync" version="1.1">
+  <settings><composition width="320" height="180" frame-rate="30000/1001" duration="3s" /></settings>
+  <assets><asset id="av" type="video" src="clip.mp4" duration="4s" /></assets>
+  <timelines><timeline id="main" duration="3s"><lane id="a" type="audio">
+    <clip id="lip" ref="asset:av" start="00:00:00:15" duration="2s" audio-offset="80ms" />
+  </lane></timeline></timelines>
+</project></vhtml></body></html>

@@ -1,0 +1,15 @@
+{
+  "name": "@sdkwork/vhtml-example-05-vertical-social",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vhtml build .",
+    "validate": "vhtml validate .",
+    "preview": "vhtml preview . --open",
+    "export": "vhtml export . --delivery tiktok"
+  },
+  "dependencies": {
+    "@sdkwork/vhtml": "workspace:*"
+  }
+}

@@ -1,0 +1,15 @@
+<project id="conformance-legacy" version="1.0">
+  <settings>
+    <composition width="320" height="180" frame-rate="30/1" duration="1s" />
+  </settings>
+  <timelines>
+    <timeline id="main" duration="1s">
+      <track id="v" type="video">
+        <clip id="c" ref="scene:x" start="0s" duration="1s" />
+      </track>
+    </timeline>
+  </timelines>
+  <scenes>
+    <scene id="x"><div>legacy</div></scene>
+  </scenes>
+</project>

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vhtml.dev/schema/vhtml-1.1/provider-response.schema.json",
+  "title": "VHTML generation provider response",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "status": { "enum": ["queued", "running", "succeeded", "failed", "cancelled"] },
+    "jobId": { "type": "string" },
+    "statusUrl": { "type": "string" },
+    "error": { "type": "string" },
+    "provider": { "type": "string" },
+    "model": { "type": "string" },
+    "seed": { "type": "integer" },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": true,
+        "anyOf": [
+          { "required": ["url"] },
+          { "required": ["base64"] },
+          { "required": ["path"] }
+        ],
+        "properties": {
+          "url": { "type": "string" },
+          "base64": { "type": "string" },
+          "path": { "type": "string" },
+          "mimeType": { "type": "string" },
+          "kind": { "type": "string" },
+          "width": { "type": "integer" },
+          "height": { "type": "integer" },
+          "durationSeconds": { "type": "number" },
+          "sampleRate": { "type": "integer" },
+          "channels": { "type": "integer" },
+          "role": { "type": "string" },
+          "metadata": { "type": "object", "additionalProperties": { "type": "string" } }
+        }
+      }
+    }
+  },
+  "anyOf": [
+    { "required": ["outputs"] },
+    { "required": ["jobId"] },
+    { "required": ["status"] }
+  ]
+}

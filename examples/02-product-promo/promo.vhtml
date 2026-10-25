@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>VHTML Product Promo</title>
+    <style>
+      :root{--accent:#6ee7ff;--ink:#f3f7ff;--muted:#91a7ca;}
+    .card{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:center;padding:0 9%;}
+    .eyebrow{font-size:20px;letter-spacing:.44em;color:var(--accent);font-weight:700;margin-bottom:22px;}
+    .title{font-size:92px;line-height:.98;letter-spacing:-3px;font-weight:800;margin:0;color:var(--ink);}
+    .title em{font-style:normal;color:var(--accent);}
+    .copy{font-size:26px;color:var(--muted);margin-top:26px;max-width:760px;line-height:1.5;}
+    .chips{display:flex;gap:14px;margin-top:34px;}
+    .chip{padding:9px 16px;border:1px solid rgba(110,231,255,.35);border-radius:99px;color:#cfeeff;font-size:15px;background:rgba(10,25,40,.55);}
+    .grid{position:absolute;inset:0;display:grid;grid-template-columns:1fr 1fr;gap:26px;padding:110px 9%;align-content:center;}
+    .feature{padding:26px;border:1px solid rgba(140,180,255,.22);border-radius:16px;background:linear-gradient(150deg,rgba(18,38,64,.8),rgba(8,16,30,.6));}
+    .feature b{display:block;font-size:22px;color:#fff;margin-bottom:10px;}
+    .feature span{font-size:17px;color:var(--muted);line-height:1.45;}
+    .feature i{display:block;width:34px;height:3px;background:var(--accent);margin-bottom:18px;border-radius:2px;}
+    .outro{position:absolute;inset:0;display:grid;place-items:center;text-align:center;}
+    .outro .title{font-size:64px;}
+    .outro .copy{margin-top:16px;}
+    .badge{position:absolute;top:34px;right:40px;font-size:12px;letter-spacing:.24em;color:#7e93b6;text-transform:uppercase;}
+    </style>
+  </head>
+  <body>
+    <vhtml version="1.1">
+      <project id="product-promo" version="1.1" title="VHTML Product Promo" lang="en" main-timeline="main">
+        <settings>
+          <composition width="1920" height="1080" frame-rate="30" duration="8.033333s" sample-rate="48000" channels="2" background="#050914" color-space="srgb" seed="7"></composition>
+        </settings>
+        <assets>
+          <asset id="gen:bg" type="video" src="generated/bg.mp4" mime-type="video/mp4" duration="8s" width="1280" height="720" hash="802e4518d62c15fcfad0a7e59decb536e89ab5bc81a04afc85b9f5332efbdb10" size="122642" generated-by="bg" provider="procedural" seed="7" prompt-hash="27b6fc7804196817880afe6fd7ab4332f82fd0e6cc56e81c455b2096b8d03b9f" created-at="2026-10-23T03:38:27.520Z">
+          </asset>
+          <asset id="gen:cover" type="image" src="generated/cover.svg" mime-type="image/svg+xml" width="1280" height="720" hash="de473fc4df5d6621473cceaef4fa03bc80f6e48378d038dfe63dd8a7bb798df7" size="1285" generated-by="cover" provider="procedural" seed="7" prompt-hash="d053f2d72da5f76427838d8716983fec8bff4477006c85a7de55b082aaa56472" created-at="2026-10-23T03:38:27.522Z">
+          </asset>
+          <asset id="gen:music" type="audio" src="generated/music.wav" mime-type="audio/wav" duration="8s" sample-rate="48000" channels="2" hash="c5d44391b769f32aac8848a199549de95fcfa3d98e98ba02fca8b9b7ea35bd4f" size="3072092" generated-by="music" provider="procedural" seed="7" prompt-hash="9a602556e4f215d783182e382d21b142de731dc8878387a6839c09282b2147f7" created-at="2026-10-23T03:38:27.852Z">
+          </asset>
+        </assets>
+        <scenes>
+          <scene id="hero" duration="4.5s">
+            <style>
+              @keyframes heroIn{from{opacity:0;transform:translateY(46px)}to{opacity:1;transform:translateY(0)}}
+        .card > *{animation:heroIn .9s cubic-bezier(.2,.8,.2,1) both}
+        .card > .eyebrow{animation-delay:.05s}.card > .title{animation-delay:.12s}.card > .copy{animation-delay:.22s}.card > .chips{animation-delay:.34s}
+            </style>
+            <div class="card">
+          <div class="eyebrow">VHTML 1.1</div>
+          <h1 class="title">Write the page.<br /><em>Render the film.</em></h1>
+          <p class="copy">The full HTML/CSS engine for visuals. A real timeline for editing. Deterministic frames and mixed audio for delivery.</p>
+          <div class="chips"><span class="chip">HTML + CSS</span><span class="chip">Timeline editing</span><span class="chip">AI generation</span></div>
+        </div>
+        <div class="badge">product film / 01</div>
+          </scene>
+          <scene id="features" duration="4s">
+            <style>
+              @keyframes featureIn{from{opacity:0;transform:translateY(30px)}to{opacity:1;transform:translateY(0)}}
+        .feature{animation:featureIn .7s cubic-bezier(.2,.8,.2,1) both}
+        .feature:nth-child(2){animation-delay:.08s}.feature:nth-child(3){animation-delay:.16s}.feature:nth-child(4){animation-delay:.24s}
+            </style>
+            <div class="grid">
+          <div class="feature"><i></i><b>Deterministic frames</b><span>Rational time, virtual clock, media seeking and repeatable screenshots.</span></div>
+          <div class="feature"><i></i><b>Non-destructive edits</b><span>Trim, split, ripple, roll, slip, speed, transitions and keyframes.</span></div>
+          <div class="feature"><i></i><b>Element-level animation</b><span>Animate any HTML selector or compose clip transforms and filters.</span></div>
+          <div class="feature"><i></i><b>Sample-accurate audio</b><span>Gain automation, panning, fades and transitions mixed in one pass.</span></div>
+        </div>
+        <div class="badge">product film / 02</div>
+          </scene>
+          <scene id="outro" duration="3s">
+            <style>
+              @keyframes outroIn{from{opacity:0;letter-spacing:.2em}to{opacity:1;letter-spacing:-2px}}
+        .outro .title{animation:outroIn .9s ease-out both}
+            </style>
+            <div class="outro">
+          <div>
+            <h1 class="title">One file. Every frame.</h1>
+            <p class="copy">VHTML 1.1 · open standard, reference runtime, deterministic export.</p>
+          </div>
+        </div>
+        <div class="badge">product film / 03</div>
+          </scene>
+        </scenes>
+        <generations>
+          <generate id="bg" kind="video" provider="procedural">
+            <prompt>deep blue cinematic gradient with soft drifting light, abstract product film background</prompt>
+            <constraints duration="8s" width="1280" height="720" frame-rate="30"></constraints>
+          </generate>
+          <generate id="cover" kind="image" provider="procedural">
+            <prompt>abstract product cover art with cyan glass shapes on midnight blue</prompt>
+            <constraints width="1280" height="720"></constraints>
+          </generate>
+          <generate id="music" kind="music" provider="procedural">
+            <prompt>warm minimal electronic underscore, slow build, soft chord pad</prompt>
+            <constraints duration="8s" sample-rate="48000" channels="2"></constraints>
+          </generate>
+        </generations>
+        <timelines>
+          <timeline id="main" duration="8.033333s">
+            <lane id="background" type="video" order="1">
+              <clip id="bg-clip" kind="video" ref="gen:bg" start="0s" duration="8s" out="8s">
+                <effect id="fx-vignette-1" type="vignette" amount="0.5"></effect>
+                <effect id="fx-grain-2" type="grain" opacity="0.06"></effect>
+              </clip>
+            </lane>
+            <lane id="story" type="video" order="2">
+              <clip id="hero-clip" kind="scene" ref="scene:hero" start="0.4s" duration="4.1s">
+                <transform x="-0.009" y="2.219"></transform>
+                <animate id="anim-opacity-3" property="opacity" start="0s" duration="0.7s" time-base="clip" easing="ease-out">
+                  <keyframe at="0s" value="0"></keyframe>
+                  <keyframe at="0.7s" value="1"></keyframe>
+                </animate>
+              </clip>
+              <clip id="features-clip" kind="scene" ref="scene:features" start="4s" duration="3.5s">
+                <animate id="anim-opacity-4" property="opacity" start="0s" duration="0.6s" time-base="clip" easing="linear">
+                  <keyframe at="0s" value="0"></keyframe>
+                  <keyframe at="0.6s" value="1"></keyframe>
+                </animate>
+              </clip>
+              <transition id="transition-story-1" from="hero-clip" to="features-clip" type="crossfade" duration="0.5s"></transition>
+            </lane>
+            <lane id="cover-overlay" type="overlay" order="3">
+              <clip id="cover-clip" kind="image" ref="gen:cover" start="3.1s" duration="2.4s" opacity="0.32" blend="screen">
+                <animate id="anim-opacity-6" property="opacity" start="0s" duration="0.8s" time-base="clip" easing="linear">
+                  <keyframe at="0s" value="0"></keyframe>
+                  <keyframe at="0.8s" value="0.32"></keyframe>
+                </animate>
+                <animate id="anim-scale-7" property="scale" start="0s" duration="2.4s" time-base="clip" easing="ease-out">
+                  <keyframe at="0s" value="1.04"></keyframe>
+                  <keyframe at="2.4s" value="1"></keyframe>
+                </animate>
+              </clip>
+            </lane>
+            <lane id="music-lane" type="audio" order="4">
+              <clip id="music-clip" kind="audio" ref="gen:music" start="0s" duration="8s" out="8s" fade-in="1.2s" fade-out="1.6s">
+              </clip>
+            </lane>
+            <lane id="captions" type="caption" name="Captions" order="5" caption-style="font-size:28px;bottom:7%;color:#eaf7ff">
+              <cue id="cue-1" start="0.9s" duration="3s" text="Write the page. Render the film.">
+              </cue>
+              <cue id="cue-2" start="4.2s" duration="2.8s" text="A real timeline, not a screenshot recorder.">
+              </cue>
+              <cue id="cue-3" start="7.1s" duration="0.8s" text="VHTML 1.1 — deterministic by design.">
+              </cue>
+            </lane>
+          </timeline>
+        </timelines>
+        <outputs>
+          <output id="output-1" format="mp4" timeline="main" width="1280" height="720" frame-rate="30" video-codec="libx264" audio-codec="aac" crf="20" preset="medium" sample-rate="48000" channels="2" path="out/product-promo.mp4"></output>
+        </outputs>
+      </project>
+    </vhtml>
+  </body>
+</html>

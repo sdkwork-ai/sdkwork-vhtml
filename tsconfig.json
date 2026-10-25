@@ -1,0 +1,78 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@sdkwork/vhtml-core": [
+        "packages/core/src/index.ts"
+      ],
+      "@sdkwork/vhtml-core/*": [
+        "packages/core/src/*.ts"
+      ],
+      "@sdkwork/vhtml-schema": [
+        "packages/schema/src/index.ts"
+      ],
+      "@sdkwork/vhtml-schema/*": [
+        "packages/schema/src/*.ts"
+      ],
+      "@sdkwork/vhtml-ffmpeg": [
+        "packages/ffmpeg/src/index.ts"
+      ],
+      "@sdkwork/vhtml-runtime": [
+        "packages/runtime/src/index.ts"
+      ],
+      "@sdkwork/vhtml-runtime/*": [
+        "packages/runtime/src/*.ts"
+      ],
+      "@sdkwork/vhtml-media": [
+        "packages/media/src/index.ts"
+      ],
+      "@sdkwork/vhtml-media/*": [
+        "packages/media/src/*.ts"
+      ],
+      "@sdkwork/vhtml-project": [
+        "packages/project/src/index.ts"
+      ],
+      "@sdkwork/vhtml-project/*": [
+        "packages/project/src/*.ts"
+      ],
+      "@sdkwork/vhtml-generation": [
+        "packages/generation/src/index.ts"
+      ],
+      "@sdkwork/vhtml-sdk": [
+        "packages/sdk/src/index.ts"
+      ],
+      "@sdkwork/vhtml-editor": [
+        "packages/editor/src/index.ts"
+      ],
+      "@sdkwork/vhtml-studio": [
+        "packages/studio/src/index.ts"
+      ],
+      "@sdkwork/vhtml-studio/*": [
+        "packages/studio/src/*.ts"
+      ],
+      "@sdkwork/vhtml-cli": [
+        "packages/cli/src/index.ts"
+      ],
+      "@sdkwork/vhtml-cli/*": [
+        "packages/cli/src/*.ts"
+      ],
+      "@sdkwork/vhtml": [
+        "packages/vhtml/src/index.ts"
+      ],
+      "@sdkwork/vhtml/*": [
+        "packages/vhtml/src/*.ts"
+      ]
+    }
+  },
+  "include": [
+    "packages/**/*.ts",
+    "tests/**/*.ts",
+    "examples/**/*.ts"
+  ],
+  "exclude": [
+    "packages/*/dist",
+    "node_modules"
+  ]
+}

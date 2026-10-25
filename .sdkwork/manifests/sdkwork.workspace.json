@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "kind": "sdkwork.workspace",
+  "rootType": "repository",
+  "name": "sdkwork-vhtml",
+  "applicationCode": null,
+  "skillsDir": ".sdkwork/skills",
+  "pluginsDir": ".sdkwork/plugins",
+  "canonicalSpecs": ["../sdkwork-specs/README.md", "specification/README.md"]
+}

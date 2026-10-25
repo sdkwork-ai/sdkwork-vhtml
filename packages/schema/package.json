@@ -1,0 +1,63 @@
+{
+  "name": "@sdkwork/vhtml-schema",
+  "version": "1.1.1",
+  "description": "Machine-readable JSON Schemas (draft 2020-12) for the VHTML Core Model, project manifest, package metadata, AI Provider protocol and commercial export reports.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./model": {
+      "types": "./dist/model.d.ts",
+      "import": "./dist/model.js",
+      "default": "./dist/model.js"
+    },
+    "./project": {
+      "types": "./dist/project.d.ts",
+      "import": "./dist/project.js",
+      "default": "./dist/project.js"
+    },
+    "./package": {
+      "types": "./dist/package.d.ts",
+      "import": "./dist/package.js",
+      "default": "./dist/package.js"
+    },
+    "./vhtml-1.1/model.schema.json": "./schemas/vhtml-1.1/model.schema.json",
+    "./vhtml-1.1/project.schema.json": "./schemas/vhtml-1.1/project.schema.json",
+    "./vhtml-1.1/package.schema.json": "./schemas/vhtml-1.1/package.schema.json",
+    "./vhtml-1.1/provider-request.schema.json": "./schemas/vhtml-1.1/provider-request.schema.json",
+    "./vhtml-1.1/provider-response.schema.json": "./schemas/vhtml-1.1/provider-response.schema.json",
+    "./vhtml-1.1/export-report.schema.json": "./schemas/vhtml-1.1/export-report.schema.json",
+    "./schemas/*": "./schemas/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "schemas",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ../../scripts/fix-declarations.mjs .",
+    "prepublishOnly": "pnpm run build"
+  },
+  "keywords": [
+    "vhtml",
+    "json-schema",
+    "validation",
+    "model"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

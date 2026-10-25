@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>wrap-export</title>
+  </head>
+  <body>
+    <vhtml version="1.1">
+      <project id="wrap-export" version="1.1" main-timeline="main">
+        <settings>
+          <composition width="320" height="180" frame-rate="30" duration="4.5s" sample-rate="48000" channels="2" background="#000000" color-space="srgb" seed="1"></composition>
+        </settings>
+        <assets>
+          <asset id="tone" type="audio" src="./tone.wav" duration="4s">
+          </asset>
+        </assets>
+        <timelines>
+          <timeline id="main" duration="4.5s">
+            <lane id="v" type="video" order="0" locked>
+              <clip id="wrap" kind="timeline" ref="timeline:sub" start="0.5s" duration="2s" audio-offset="0.5s">
+              </clip>
+              <clip id="p1-1" kind="timeline" ref="timeline:sub" start="2.5s" duration="2s" audio-offset="0.5s">
+              </clip>
+            </lane>
+            <marker id="m1" at="1.5s" name="Chapter 1" type="chapter"></marker>
+          </timeline>
+          <timeline id="sub" duration="2s">
+            <lane id="sa" type="audio" order="0">
+              <clip id="inner" kind="audio" ref="asset:tone" start="0s" duration="2s" out="2s">
+              </clip>
+            </lane>
+          </timeline>
+        </timelines>
+        <outputs>
+          <output id="wav" format="wav" timeline="main" width="320" height="180" frame-rate="30" video-codec="none" audio-codec="pcm_s16le" sample-rate="48000" channels="2"></output>
+        </outputs>
+      </project>
+    </vhtml>
+  </body>
+</html>

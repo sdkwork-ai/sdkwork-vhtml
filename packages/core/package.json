@@ -1,0 +1,105 @@
+{
+  "name": "@sdkwork/vhtml-core",
+  "version": "1.1.1",
+  "description": "VHTML 1.1 core: exact rational time, Core Model, HTML5 parser, validator, serializer, animation and non-destructive edit operations.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./time": {
+      "types": "./dist/time.d.ts",
+      "import": "./dist/time.js",
+      "default": "./dist/time.js"
+    },
+    "./model": {
+      "types": "./dist/model.d.ts",
+      "import": "./dist/model.js",
+      "default": "./dist/model.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "import": "./dist/errors.js",
+      "default": "./dist/errors.js"
+    },
+    "./parser": {
+      "types": "./dist/parser.d.ts",
+      "import": "./dist/parser.js",
+      "default": "./dist/parser.js"
+    },
+    "./validate": {
+      "types": "./dist/validate.d.ts",
+      "import": "./dist/validate.js",
+      "default": "./dist/validate.js"
+    },
+    "./serialize": {
+      "types": "./dist/serialize.d.ts",
+      "import": "./dist/serialize.js",
+      "default": "./dist/serialize.js"
+    },
+    "./animation": {
+      "types": "./dist/animation.d.ts",
+      "import": "./dist/animation.js",
+      "default": "./dist/animation.js"
+    },
+    "./presets": {
+      "types": "./dist/presets.d.ts",
+      "import": "./dist/presets.js",
+      "default": "./dist/presets.js"
+    },
+    "./edits": {
+      "types": "./dist/edits.d.ts",
+      "import": "./dist/edits.js",
+      "default": "./dist/edits.js"
+    },
+    "./package.json": "./package.json",
+    "./authoring": {
+      "types": "./dist/authoring.d.ts",
+      "import": "./dist/authoring.js",
+      "default": "./dist/authoring.js"
+    },
+    "./program": {
+      "types": "./dist/program.d.ts",
+      "import": "./dist/program.js",
+      "default": "./dist/program.js"
+    },
+    "./captions": {
+      "types": "./dist/captions.d.ts",
+      "import": "./dist/captions.js",
+      "default": "./dist/captions.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ../../scripts/fix-declarations.mjs .",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "parse5": "^7.3.0"
+  },
+  "keywords": [
+    "vhtml",
+    "video",
+    "html",
+    "timeline",
+    "parser",
+    "validator"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

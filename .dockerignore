@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+dist-packages
+.git
+.gitignore
+tests
+docs
+specification
+conformance
+examples/**/generated
+examples/**/renders
+examples/**/out
+*.log

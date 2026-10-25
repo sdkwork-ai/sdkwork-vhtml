@@ -1,0 +1,29 @@
+{
+  "version": "1.1",
+  "id": "02-product-promo",
+  "entry": "promo.vhtml",
+  "source": "video.ts",
+  "paths": {
+    "assets": "assets",
+    "images": "assets/images",
+    "video": "assets/video",
+    "audio": "assets/audio",
+    "fonts": "assets/fonts",
+    "scenes": "scenes",
+    "generated": "generated",
+    "renders": "renders",
+    "cache": ".vhtml/cache"
+  },
+  "build": {
+    "out": "promo.vhtml"
+  },
+  "preview": {
+    "port": 4173,
+    "open": false
+  },
+  "export": {
+    "outDir": "renders",
+    "format": "mp4",
+    "crf": 20
+  }
+}

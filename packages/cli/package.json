@@ -1,0 +1,60 @@
+{
+  "name": "@sdkwork/vhtml-cli",
+  "version": "1.1.1",
+  "description": "VHTML command line: init, build, validate, inspect, render, export, preview, generate, edit, audio, captions, assets, pack/unpack, doctor.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./main": {
+      "types": "./dist/main.d.ts",
+      "import": "./dist/main.js",
+      "default": "./dist/main.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "bin": {
+    "vhtml": "./bin/vhtml.mjs"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ../../scripts/fix-declarations.mjs .",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@sdkwork/vhtml-core": "workspace:^",
+    "@sdkwork/vhtml-sdk": "workspace:^",
+    "@sdkwork/vhtml-runtime": "workspace:^",
+    "@sdkwork/vhtml-media": "workspace:^",
+    "@sdkwork/vhtml-ffmpeg": "workspace:^",
+    "@sdkwork/vhtml-generation": "workspace:^",
+    "@sdkwork/vhtml-project": "workspace:^",
+    "@sdkwork/vhtml-studio": "workspace:^"
+  },
+  "keywords": [
+    "vhtml",
+    "cli",
+    "video",
+    "render",
+    "export"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

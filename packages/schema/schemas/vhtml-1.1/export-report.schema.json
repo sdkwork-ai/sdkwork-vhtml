@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vhtml.dev/schema/vhtml-1.1/export-report.schema.json",
+  "title": "VHTML commercial export report",
+  "type": "object",
+  "required": ["schema", "vhtml", "exportedAt", "project", "output", "format", "width", "height", "frameRate", "frames", "durationSeconds", "sizeBytes", "provenance", "issues"],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": "vhtml.export-report/1" },
+    "vhtml": { "const": "1.1" },
+    "exportedAt": { "type": "string" },
+    "project": { "type": "string" },
+    "title": { "type": "string" },
+    "output": { "type": "string" },
+    "format": { "type": "string" },
+    "width": { "type": "integer" },
+    "height": { "type": "integer" },
+    "frameRate": { "type": "string" },
+    "frames": { "type": "integer" },
+    "durationSeconds": { "type": "number" },
+    "sizeBytes": { "type": "integer" },
+    "elapsedMs": { "type": "number" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "path": { "type": "string" },
+    "audioPath": { "type": "string" },
+    "captionsPath": { "type": "string" },
+    "issues": { "type": "array", "items": { "type": "string" } },
+    "probe": { "type": "object", "additionalProperties": true },
+    "delivery": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "preset": { "type": "string" },
+        "label": { "type": "string" },
+        "aspectRatio": { "type": "string" },
+        "safeArea": { "type": "string" },
+        "platforms": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["aiGenerated", "generatedAssets", "generations", "licenses", "consents", "aiDisclosure"],
+      "additionalProperties": true,
+      "properties": {
+        "aiGenerated": { "type": "boolean" },
+        "aiDisclosure": { "type": "boolean" },
+        "licenses": { "type": "array", "items": { "type": "string" } },
+        "consents": { "type": "array", "items": { "type": "string" } },
+        "assets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "type": "string" },
+              "src": { "type": "string" },
+              "hash": { "type": "string" },
+              "license": { "type": "string" },
+              "generatedBy": { "type": "string" }
+            }
+          }
+        },
+        "generatedAssets": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "type": "string" },
+              "src": { "type": "string" },
+              "generatedBy": { "type": "string" },
+              "provider": { "type": "string" },
+              "model": { "type": "string" },
+              "hash": { "type": "string" }
+            }
+          }
+        },
+        "generations": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": true,
+            "properties": {
+              "id": { "type": "string" },
+              "kind": { "type": "string" },
+              "provider": { "type": "string" },
+              "model": { "type": "string" },
+              "status": { "type": "string" },
+              "review": { "type": "string" },
+              "rights": { "type": "object", "additionalProperties": true },
+              "safety": { "type": "object", "additionalProperties": true }
+            }
+          }
+        }
+      }
+    }
+  }
+}

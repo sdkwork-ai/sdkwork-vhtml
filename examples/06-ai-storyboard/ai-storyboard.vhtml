@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AI storyboard pipeline</title>
+  </head>
+  <body>
+    <vhtml version="1.1">
+      <project id="ai-storyboard" version="1.1" title="AI storyboard pipeline" main-timeline="main">
+        <settings>
+          <composition width="1280" height="720" frame-rate="30" duration="3s" sample-rate="48000" channels="2" background="#070c16" color-space="srgb" seed="1"></composition>
+        </settings>
+        <generations>
+          <generate id="cover" kind="image" provider="procedural">
+            <prompt>cinematic teal cover frame, soft light, abstract product stage</prompt>
+            <constraints width="1280" height="720" seed="12"></constraints>
+            <direction>{&quot;image&quot;:{&quot;style&quot;:&quot;cinematic&quot;,&quot;composition&quot;:&quot;centered&quot;,&quot;background&quot;:&quot;teal gradient&quot;},&quot;shot&quot;:{&quot;framing&quot;:&quot;wide&quot;,&quot;lighting&quot;:&quot;soft rim light&quot;,&quot;mood&quot;:&quot;premium&quot;}}</direction>
+          </generate>
+          <generate id="shot" kind="video" provider="procedural" model="procedural-gradient-v1">
+            <prompt>slow camera push through a teal product stage with floating light</prompt>
+            <gen-input ref="gen:cover" role="first-frame"></gen-input>
+            <constraints duration="3s" width="1280" height="720" frame-rate="30" seed="12"></constraints>
+            <direction>{&quot;shot&quot;:{&quot;camera&quot;:&quot;slow push in&quot;,&quot;framing&quot;:&quot;wide&quot;,&quot;continuity&quot;:&quot;same teal palette&quot;},&quot;video&quot;:{&quot;firstFrame&quot;:&quot;gen:cover&quot;,&quot;loop&quot;:false}}</direction>
+            <rights commercial-use ai-disclosure></rights>
+          </generate>
+          <generate id="score" kind="music" provider="procedural">
+            <prompt>minimal cinematic synth bed, uplifting, no vocals</prompt>
+            <constraints duration="3s" sample-rate="48000" seed="12"></constraints>
+            <direction>{&quot;music&quot;:{&quot;genre&quot;:&quot;cinematic synth&quot;,&quot;mood&quot;:&quot;uplifting&quot;,&quot;bpm&quot;:96,&quot;key&quot;:&quot;D minor&quot;,&quot;vocals&quot;:&quot;none&quot;,&quot;loop&quot;:false}}</direction>
+          </generate>
+          <generate id="whoosh" kind="sfx" provider="procedural">
+            <prompt>soft transition whoosh</prompt>
+            <constraints duration="0.6s" sample-rate="48000" seed="12"></constraints>
+            <direction>{&quot;sfx&quot;:{&quot;category&quot;:&quot;whoosh&quot;,&quot;environment&quot;:&quot;studio&quot;,&quot;intensity&quot;:&quot;medium&quot;,&quot;loop&quot;:false}}</direction>
+          </generate>
+        </generations>
+        <storyboard>
+          <shot id="shot-cover" order="1" title="Cover frame" generation="cover" duration="0.8s" status="ready" tags="cover,product">
+            <description>Teal stage, centered product, soft rim light.</description>
+            <direction>{&quot;shot&quot;:{&quot;framing&quot;:&quot;wide&quot;,&quot;lighting&quot;:&quot;soft rim light&quot;,&quot;mood&quot;:&quot;premium&quot;}}</direction>
+          </shot>
+          <shot id="shot-push" order="2" title="Push in" generation="shot" duration="3s" status="boarded" tags="hero,camera">
+            <description>Slow push through floating light; hold the same palette.</description>
+            <direction>{&quot;shot&quot;:{&quot;camera&quot;:&quot;slow push in&quot;,&quot;continuity&quot;:&quot;same teal palette&quot;},&quot;video&quot;:{&quot;loop&quot;:false}}</direction>
+          </shot>
+        </storyboard>
+        <timelines>
+          <timeline id="main" duration="3s">
+            <lane id="generated-video" type="video" order="0">
+              <clip id="shot-clip" kind="video" ref="gen:shot" start="0s" duration="3s" out="3s">
+              </clip>
+            </lane>
+            <lane id="generated-score" type="audio" order="1">
+              <clip id="score-clip" kind="audio" ref="gen:score" start="0s" duration="3s" out="3s" volume="0.55" fade-out="0.6s">
+              </clip>
+            </lane>
+            <lane id="generated-sfx" type="audio" order="2">
+              <clip id="whoosh-clip" kind="audio" ref="gen:whoosh" start="0.8s" duration="0.6s" out="0.6s" volume="0.8">
+              </clip>
+            </lane>
+          </timeline>
+        </timelines>
+        <outputs>
+          <output id="output-1" format="mp4" timeline="main" width="1280" height="720" frame-rate="30" video-codec="libx264" audio-codec="aac" crf="20" sample-rate="48000" channels="2" path="renders/ai-storyboard.mp4"></output>
+        </outputs>
+      </project>
+    </vhtml>
+  </body>
+</html>

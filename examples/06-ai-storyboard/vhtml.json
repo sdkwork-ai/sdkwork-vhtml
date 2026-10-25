@@ -1,0 +1,29 @@
+{
+  "version": "1.1",
+  "id": "06-ai-storyboard",
+  "entry": "ai-storyboard.vhtml",
+  "source": "video.ts",
+  "paths": {
+    "assets": "assets",
+    "images": "assets/images",
+    "video": "assets/video",
+    "audio": "assets/audio",
+    "fonts": "assets/fonts",
+    "scenes": "scenes",
+    "generated": "generated",
+    "renders": "renders",
+    "cache": ".vhtml/cache"
+  },
+  "build": {
+    "out": "ai-storyboard.vhtml"
+  },
+  "preview": {
+    "port": 4177,
+    "open": false
+  },
+  "export": {
+    "outDir": "renders",
+    "format": "mp4",
+    "crf": 20
+  }
+}

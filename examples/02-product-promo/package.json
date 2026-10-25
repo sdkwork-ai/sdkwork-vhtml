@@ -1,0 +1,16 @@
+{
+  "name": "@sdkwork/vhtml-example-02-product-promo",
+  "version": "1.1.1",
+  "private": true,
+  "type": "module",
+  "description": "Product promo",
+  "scripts": {
+    "build": "vhtml build .",
+    "validate": "vhtml validate .",
+    "preview": "vhtml preview . --open",
+    "export": "vhtml export ."
+  },
+  "dependencies": {
+    "@sdkwork/vhtml": "workspace:*"
+  }
+}

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vhtml.dev/schema/vhtml-1.1/project.schema.json",
+  "title": "VHTML 1.1 project manifest (vhtml.json)",
+  "type": "object",
+  "required": ["version", "entry"],
+  "properties": {
+    "version": { "const": "1.1" },
+    "id": { "type": "string" },
+    "title": { "type": "string" },
+    "entry": { "$ref": "#/$defs/relativePath" },
+    "source": { "$ref": "#/$defs/relativePath" },
+    "detached": { "type": "boolean", "description": "The .vhtml entry is canonical; do not rebuild from source." },
+    "paths": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "assets": { "$ref": "#/$defs/relativePath" },
+        "images": { "$ref": "#/$defs/relativePath" },
+        "video": { "$ref": "#/$defs/relativePath" },
+        "audio": { "$ref": "#/$defs/relativePath" },
+        "fonts": { "$ref": "#/$defs/relativePath" },
+        "scenes": { "$ref": "#/$defs/relativePath" },
+        "generated": { "$ref": "#/$defs/relativePath" },
+        "renders": { "$ref": "#/$defs/relativePath" },
+        "cache": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "build": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "out": { "$ref": "#/$defs/relativePath" }
+      }
+    },
+    "preview": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+        "open": { "type": "boolean" },
+        "chrome": { "type": "string" }
+      }
+    },
+    "export": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "outDir": { "$ref": "#/$defs/relativePath" },
+        "format": { "enum": ["mp4", "webm", "gif", "png-sequence", "wav", "mp3"] },
+        "width": { "type": "integer", "minimum": 1 },
+        "height": { "type": "integer", "minimum": 1 },
+        "fps": { "oneOf": [{ "type": "string" }, { "type": "number" }] },
+        "crf": { "type": "integer", "minimum": 0, "maximum": 51 },
+        "preset": { "type": "string" },
+        "captions": { "type": "boolean" }
+      }
+    },
+    "settings": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "allowRemoteAssets": { "type": "boolean" },
+        "maxAssetSize": { "type": "integer", "minimum": 1 },
+        "frameTimeoutMs": { "type": "integer", "minimum": 1000 }
+      }
+    },
+    "requirements": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "additionalProperties": true,
+  "$defs": {
+    "relativePath": {
+      "type": "string",
+      "minLength": 1,
+      "not": { "pattern": "^(?:[A-Za-z]:[\\\\/]|/|\\\\)" },
+      "allOf": [
+        { "not": { "pattern": "(^|/)\\.\\.(/|$)" } }
+      ]
+    }
+  }
+}

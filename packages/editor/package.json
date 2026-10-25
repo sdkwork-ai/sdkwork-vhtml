@@ -1,0 +1,43 @@
+{
+  "name": "@sdkwork/vhtml-editor",
+  "version": "1.1.1",
+  "description": "Headless VHTML editing package: trim/split/ripple/move/slip/slide/roll/speed/freeze, transitions, effects, markers, undo sessions and asset operations.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ../../scripts/fix-declarations.mjs .",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@sdkwork/vhtml-core": "workspace:^"
+  },
+  "keywords": [
+    "vhtml",
+    "editor",
+    "timeline",
+    "non-linear-editing"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

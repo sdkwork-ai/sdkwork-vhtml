@@ -1,0 +1,1622 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vhtml.dev/schema/vhtml-1.1/model.schema.json",
+  "title": "VHTML 1.1 Core Model",
+  "description": "Structural schema for the VHTML 1.1 Project IR. Cross-field rules (references, overlap, source bounds, IDs) are enforced by the VHTML validator and documented in the specification.",
+  "type": "object",
+  "required": [
+    "specVersion",
+    "project"
+  ],
+  "properties": {
+    "specVersion": {
+      "const": "1.1"
+    },
+    "project": {
+      "$ref": "#/$defs/project"
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "root": {
+          "type": "string"
+        },
+        "raw": {
+          "type": "string"
+        }
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/diagnostic"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "rational": {
+      "type": "object",
+      "required": [
+        "num",
+        "den"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "num": {
+          "type": "integer"
+        },
+        "den": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "diagnostic": {
+      "type": "object",
+      "required": [
+        "code",
+        "severity",
+        "message"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9_]*$"
+        },
+        "severity": {
+          "enum": [
+            "error",
+            "warning",
+            "info"
+          ]
+        },
+        "message": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "objectId": {
+          "type": "string"
+        },
+        "hint": {
+          "type": "string"
+        }
+      }
+    },
+    "sourceLocation": {
+      "type": "object",
+      "required": [
+        "line",
+        "column"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "file": {
+          "type": "string"
+        },
+        "line": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "column": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "endLine": {
+          "type": "integer"
+        },
+        "endColumn": {
+          "type": "integer"
+        },
+        "offset": {
+          "type": "integer"
+        },
+        "length": {
+          "type": "integer"
+        }
+      }
+    },
+    "transform": {
+      "type": "object",
+      "required": [
+        "x",
+        "y",
+        "scaleX",
+        "scaleY",
+        "rotate",
+        "anchorX",
+        "anchorY"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "x": {
+          "type": "number"
+        },
+        "y": {
+          "type": "number"
+        },
+        "scaleX": {
+          "type": "number"
+        },
+        "scaleY": {
+          "type": "number"
+        },
+        "rotate": {
+          "type": "number"
+        },
+        "anchorX": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "anchorY": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "perspective": {
+          "type": "number",
+          "minimum": 1
+        }
+      }
+    },
+    "crop": {
+      "type": "object",
+      "required": [
+        "left",
+        "right",
+        "top",
+        "bottom"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "left": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "right": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "top": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "bottom": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        }
+      }
+    },
+    "effect": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "params",
+        "enabled"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        }
+      }
+    },
+    "keyframe": {
+      "type": "object",
+      "required": [
+        "time",
+        "value"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "time": {
+          "$ref": "#/$defs/rational"
+        },
+        "value": {
+          "type": [
+            "string",
+            "number"
+          ]
+        },
+        "easing": {
+          "type": "string"
+        }
+      }
+    },
+    "animation": {
+      "type": "object",
+      "required": [
+        "id",
+        "property",
+        "keyframes",
+        "start",
+        "duration",
+        "timeBase",
+        "easing",
+        "iterations",
+        "direction",
+        "fill",
+        "compose",
+        "enabled"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "clipId": {
+          "type": "string"
+        },
+        "selector": {
+          "type": "string"
+        },
+        "property": {
+          "type": "string"
+        },
+        "keyframes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/keyframe"
+          }
+        },
+        "start": {
+          "$ref": "#/$defs/rational"
+        },
+        "duration": {
+          "$ref": "#/$defs/rational"
+        },
+        "timeBase": {
+          "enum": [
+            "clip",
+            "project"
+          ]
+        },
+        "easing": {
+          "type": "string"
+        },
+        "iterations": {
+          "oneOf": [
+            {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            {
+              "const": "infinite"
+            }
+          ]
+        },
+        "direction": {
+          "enum": [
+            "normal",
+            "reverse",
+            "alternate",
+            "alternate-reverse"
+          ]
+        },
+        "fill": {
+          "enum": [
+            "none",
+            "forwards",
+            "backwards",
+            "both"
+          ]
+        },
+        "compose": {
+          "enum": [
+            "replace",
+            "add",
+            "accumulate"
+          ]
+        },
+        "enabled": {
+          "type": "boolean"
+        }
+      }
+    },
+    "clip": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "start",
+        "duration",
+        "sourceIn",
+        "speed",
+        "enabled",
+        "opacity",
+        "blend",
+        "transform",
+        "fit",
+        "effects",
+        "animations",
+        "volume",
+        "pan",
+        "audioEffects"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "scene",
+            "video",
+            "image",
+            "svg",
+            "audio",
+            "caption",
+            "data",
+            "timeline"
+          ]
+        },
+        "ref": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "className": {
+          "type": "string"
+        },
+        "start": {
+          "$ref": "#/$defs/rational"
+        },
+        "duration": {
+          "$ref": "#/$defs/rational"
+        },
+        "sourceIn": {
+          "$ref": "#/$defs/rational"
+        },
+        "sourceOut": {
+          "$ref": "#/$defs/rational"
+        },
+        "speed": {
+          "$ref": "#/$defs/rational"
+        },
+        "reverse": {
+          "type": "boolean"
+        },
+        "freeze": {
+          "$ref": "#/$defs/rational"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "z": {
+          "type": "integer"
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "blend": {
+          "enum": [
+            "normal",
+            "multiply",
+            "screen",
+            "overlay",
+            "darken",
+            "lighten",
+            "color-dodge",
+            "color-burn",
+            "hard-light",
+            "soft-light",
+            "difference",
+            "exclusion",
+            "hue",
+            "saturation",
+            "color",
+            "luminosity",
+            "plus-lighter"
+          ]
+        },
+        "transform": {
+          "$ref": "#/$defs/transform"
+        },
+        "crop": {
+          "$ref": "#/$defs/crop"
+        },
+        "fit": {
+          "enum": [
+            "cover",
+            "contain",
+            "fill",
+            "none"
+          ]
+        },
+        "effects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        },
+        "animations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/animation"
+          }
+        },
+        "volume": {
+          "type": "number",
+          "minimum": 0
+        },
+        "pan": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "fadeIn": {
+          "$ref": "#/$defs/rational"
+        },
+        "fadeOut": {
+          "$ref": "#/$defs/rational"
+        },
+        "audioEffects": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "text": {
+          "type": "string"
+        },
+        "speaker": {
+          "type": "string"
+        },
+        "style": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "value": {
+          "type": "string"
+        },
+        "timeRemap": {
+          "$ref": "#/$defs/timeRemap"
+        },
+        "audioOffset": {
+          "$ref": "#/$defs/rational"
+        }
+      }
+    },
+    "transition": {
+      "type": "object",
+      "required": [
+        "id",
+        "trackId",
+        "fromClipId",
+        "toClipId",
+        "type",
+        "duration",
+        "easing",
+        "direction",
+        "color",
+        "params"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "trackId": {
+          "type": "string"
+        },
+        "fromClipId": {
+          "type": "string"
+        },
+        "toClipId": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "crossfade",
+            "fade",
+            "wipe",
+            "slide",
+            "zoom",
+            "blur",
+            "dip"
+          ]
+        },
+        "duration": {
+          "$ref": "#/$defs/rational"
+        },
+        "easing": {
+          "type": "string"
+        },
+        "direction": {
+          "enum": [
+            "left",
+            "right",
+            "up",
+            "down"
+          ]
+        },
+        "color": {
+          "type": "string"
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        }
+      }
+    },
+    "lane": {
+      "type": "object",
+      "required": [
+        "id",
+        "type",
+        "order",
+        "enabled",
+        "muted",
+        "locked",
+        "volume",
+        "pan",
+        "opacity",
+        "blend",
+        "clips",
+        "transitions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "video",
+            "overlay",
+            "audio",
+            "caption",
+            "data"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "order": {
+          "type": "integer"
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "muted": {
+          "type": "boolean"
+        },
+        "locked": {
+          "type": "boolean"
+        },
+        "volume": {
+          "type": "number"
+        },
+        "pan": {
+          "type": "number",
+          "minimum": -1,
+          "maximum": 1
+        },
+        "opacity": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "blend": {
+          "type": "string"
+        },
+        "captionStyle": {
+          "type": "string"
+        },
+        "clips": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/clip"
+          }
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/transition"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        },
+        "solo": {
+          "type": "boolean",
+          "description": "Solo: when any audio lane is soloed, non-soloed audio lanes are silent"
+        }
+      }
+    },
+    "marker": {
+      "type": "object",
+      "required": [
+        "id",
+        "time",
+        "type"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "time": {
+          "$ref": "#/$defs/rational"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "marker",
+            "chapter",
+            "comment"
+          ]
+        },
+        "color": {
+          "type": "string"
+        }
+      }
+    },
+    "timeline": {
+      "type": "object",
+      "required": [
+        "id",
+        "duration",
+        "tracks",
+        "markers"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "duration": {
+          "$ref": "#/$defs/rational"
+        },
+        "tracks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/lane"
+          }
+        },
+        "markers": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/marker"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        }
+      }
+    },
+    "composition": {
+      "type": "object",
+      "required": [
+        "width",
+        "height",
+        "frameRate",
+        "duration",
+        "sampleRate",
+        "channels",
+        "background",
+        "colorSpace",
+        "seed",
+        "deviceScaleFactor"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "width": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 16384
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 16,
+          "maximum": 16384
+        },
+        "frameRate": {
+          "$ref": "#/$defs/rational"
+        },
+        "duration": {
+          "$ref": "#/$defs/rational"
+        },
+        "sampleRate": {
+          "type": "integer",
+          "minimum": 8000,
+          "maximum": 192000
+        },
+        "channels": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 8
+        },
+        "background": {
+          "type": "string"
+        },
+        "colorSpace": {
+          "enum": [
+            "srgb",
+            "display-p3",
+            "rec709"
+          ]
+        },
+        "seed": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "deviceScaleFactor": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 4
+        }
+      }
+    },
+    "asset": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "src"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "image",
+            "video",
+            "audio",
+            "font",
+            "data",
+            "captions",
+            "svg"
+          ]
+        },
+        "src": {
+          "type": "string"
+        },
+        "mimeType": {
+          "type": "string"
+        },
+        "duration": {
+          "$ref": "#/$defs/rational"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "sampleRate": {
+          "type": "integer"
+        },
+        "channels": {
+          "type": "integer"
+        },
+        "hash": {
+          "type": "string"
+        },
+        "size": {
+          "type": "integer"
+        },
+        "alt": {
+          "type": "string"
+        },
+        "loop": {
+          "type": "boolean"
+        },
+        "generatedBy": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        },
+        "license": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "url": {
+              "type": "string"
+            },
+            "attribution": {
+              "type": "string"
+            },
+            "commercialUse": {
+              "type": "boolean"
+            }
+          }
+        },
+        "provenance": {
+          "type": "object",
+          "required": [
+            "source"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "source": {
+              "enum": [
+                "file",
+                "generated",
+                "remote",
+                "procedural"
+              ]
+            },
+            "taskId": {
+              "type": "string"
+            },
+            "provider": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            },
+            "promptHash": {
+              "type": "string"
+            },
+            "seed": {
+              "type": "integer"
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "outputHash": {
+              "type": "string"
+            },
+            "generatorVersion": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "scene": {
+      "type": "object",
+      "required": [
+        "id",
+        "html"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "src": {
+          "type": "string",
+          "description": "External HTML Scene fragment, relative to the project root."
+        },
+        "duration": {
+          "$ref": "#/$defs/rational"
+        },
+        "width": {
+          "type": "integer"
+        },
+        "height": {
+          "type": "integer"
+        },
+        "background": {
+          "type": "string"
+        },
+        "html": {
+          "type": "string"
+        },
+        "css": {
+          "type": "string"
+        },
+        "scripts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        }
+      }
+    },
+    "storyboardShot": {
+      "type": "object",
+      "required": [
+        "id",
+        "order",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "order": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "scene": {
+          "type": "string"
+        },
+        "generation": {
+          "type": "string"
+        },
+        "asset": {
+          "type": "string"
+        },
+        "duration": {
+          "$ref": "#/$defs/rational"
+        },
+        "status": {
+          "enum": [
+            "idea",
+            "boarded",
+            "generating",
+            "ready",
+            "approved"
+          ]
+        },
+        "direction": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "notes": {
+          "type": "string"
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        }
+      }
+    },
+    "generationTask": {
+      "type": "object",
+      "required": [
+        "id",
+        "kind",
+        "prompt",
+        "inputs",
+        "constraints",
+        "params",
+        "outputs",
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "image",
+            "video",
+            "audio",
+            "music",
+            "speech",
+            "sfx",
+            "text",
+            "edit",
+            "avatar",
+            "lipsync",
+            "dub",
+            "matte",
+            "translation",
+            "storyboard"
+          ]
+        },
+        "provider": {
+          "type": "string"
+        },
+        "model": {
+          "type": "string"
+        },
+        "prompt": {
+          "type": "string"
+        },
+        "negativePrompt": {
+          "type": "string"
+        },
+        "inputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ref",
+              "role"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "constraints": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "duration": {
+              "$ref": "#/$defs/rational"
+            },
+            "width": {
+              "type": "integer"
+            },
+            "height": {
+              "type": "integer"
+            },
+            "aspectRatio": {
+              "type": "string"
+            },
+            "frameRate": {
+              "$ref": "#/$defs/rational"
+            },
+            "sampleRate": {
+              "type": "integer"
+            },
+            "channels": {
+              "type": "integer"
+            },
+            "language": {
+              "type": "string"
+            },
+            "seed": {
+              "type": "integer"
+            },
+            "resolution": {
+              "type": "string",
+              "description": "Vendor-style resolution tier: 480p|540p|720p|1080p|2k|4k"
+            },
+            "steps": {
+              "type": "integer",
+              "minimum": 1,
+              "description": "Diffusion sampling steps"
+            },
+            "guidance": {
+              "type": "number",
+              "minimum": 0,
+              "description": "Prompt-guidance strength (cfg/guidance scale)"
+            }
+          }
+        },
+        "params": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "number",
+              "boolean"
+            ]
+          }
+        },
+        "direction": {
+          "type": "object",
+          "additionalProperties": true,
+          "properties": {
+            "shot": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "image": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "video": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "speech": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "music": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "sfx": {
+              "type": "object",
+              "additionalProperties": true
+            },
+            "edit": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
+        "review": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "status"
+          ],
+          "properties": {
+            "status": {
+              "enum": [
+                "pending",
+                "approved",
+                "rejected",
+                "changes-requested"
+              ]
+            },
+            "reviewer": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            },
+            "reviewedAt": {
+              "type": "string"
+            }
+          }
+        },
+        "rights": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "license": {
+              "type": "string"
+            },
+            "consent": {
+              "type": "string"
+            },
+            "likeness": {
+              "enum": [
+                "none",
+                "consented",
+                "synthetic"
+              ]
+            },
+            "voiceCloning": {
+              "enum": [
+                "none",
+                "consented"
+              ]
+            },
+            "commercialUse": {
+              "type": "boolean"
+            },
+            "aiDisclosure": {
+              "type": "boolean"
+            }
+          }
+        },
+        "safety": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "rating": {
+              "type": "string"
+            },
+            "policy": {
+              "type": "string"
+            },
+            "moderated": {
+              "type": "boolean"
+            },
+            "notes": {
+              "type": "string"
+            }
+          }
+        },
+        "providerJobId": {
+          "type": "string"
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "path": {
+                "type": "string"
+              },
+              "mimeType": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "status": {
+          "enum": [
+            "draft",
+            "queued",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled"
+          ]
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        }
+      }
+    },
+    "output": {
+      "type": "object",
+      "required": [
+        "id",
+        "timeline",
+        "format",
+        "width",
+        "height",
+        "frameRate",
+        "videoCodec",
+        "audioCodec",
+        "sampleRate",
+        "channels",
+        "pixelFormat",
+        "colorSpace",
+        "background",
+        "burnCaptions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "timeline": {
+          "type": "string"
+        },
+        "format": {
+          "enum": [
+            "mp4",
+            "webm",
+            "gif",
+            "png-sequence",
+            "wav",
+            "mp3"
+          ]
+        },
+        "width": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "height": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "frameRate": {
+          "$ref": "#/$defs/rational"
+        },
+        "fit": {
+          "enum": [
+            "stretch",
+            "contain",
+            "cover"
+          ]
+        },
+        "rangeStart": {
+          "$ref": "#/$defs/rational"
+        },
+        "rangeDuration": {
+          "$ref": "#/$defs/rational"
+        },
+        "videoCodec": {
+          "type": "string"
+        },
+        "audioCodec": {
+          "type": "string"
+        },
+        "videoBitrate": {
+          "type": "string"
+        },
+        "crf": {
+          "type": "integer"
+        },
+        "preset": {
+          "type": "string"
+        },
+        "audioBitrate": {
+          "type": "string"
+        },
+        "sampleRate": {
+          "type": "integer"
+        },
+        "channels": {
+          "type": "integer"
+        },
+        "pixelFormat": {
+          "type": "string"
+        },
+        "colorSpace": {
+          "enum": [
+            "srgb",
+            "display-p3",
+            "rec709"
+          ]
+        },
+        "background": {
+          "type": "string"
+        },
+        "burnCaptions": {
+          "type": "boolean"
+        },
+        "captionsPath": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
+        }
+      }
+    },
+    "project": {
+      "type": "object",
+      "required": [
+        "id",
+        "version",
+        "composition",
+        "assets",
+        "scenes",
+        "timelines",
+        "generations",
+        "outputs",
+        "styles",
+        "animations",
+        "metadata",
+        "mainTimeline"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "const": "1.1"
+        },
+        "title": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "lang": {
+          "type": "string"
+        },
+        "composition": {
+          "$ref": "#/$defs/composition"
+        },
+        "assets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/asset"
+          }
+        },
+        "scenes": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/scene"
+          }
+        },
+        "timelines": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/timeline"
+          }
+        },
+        "generations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/generationTask"
+          }
+        },
+        "storyboard": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/storyboardShot"
+          }
+        },
+        "outputs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/output"
+          }
+        },
+        "styles": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "stylesheets": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "scripts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "animations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/animation"
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "extensions": {
+          "type": "object",
+          "additionalProperties": true
+        },
+        "requirements": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "mainTimeline": {
+          "type": "string"
+        }
+      }
+    },
+    "timeRemap": {
+      "type": "object",
+      "required": [
+        "keyframes",
+        "easing"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "keyframes": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "at",
+              "source"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "at": {
+                "$ref": "#/$defs/rational"
+              },
+              "source": {
+                "$ref": "#/$defs/rational"
+              },
+              "easing": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "easing": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

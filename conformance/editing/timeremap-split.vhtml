@@ -1,0 +1,15 @@
+<!doctype html>
+<html><body><vhtml version="1.1">
+<project id="conf-remap-split" version="1.1">
+  <settings><composition width="320" height="180" frame-rate="30/1" duration="2s" /></settings>
+  <assets><asset id="vid" type="video" src="clip.mp4" duration="6s" /></assets>
+  <timelines><timeline id="main" duration="2s"><lane id="v" type="video">
+    <clip id="ramp" ref="asset:vid" start="0s" duration="2s">
+      <timeremap>
+        <remap at="0s" source="0s" />
+        <remap at="1s" source="2s" />
+        <remap at="2s" source="5s" />
+      </timeremap>
+    </clip>
+  </lane></timeline></timelines>
+</project></vhtml></body></html>

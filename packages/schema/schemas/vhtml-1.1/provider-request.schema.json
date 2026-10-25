@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vhtml.dev/schema/vhtml-1.1/provider-request.schema.json",
+  "title": "VHTML generation provider request",
+  "type": "object",
+  "required": ["schema", "taskId", "kind", "prompt", "constraints", "params", "inputs", "seed"],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": "vhtml.generation/1.1" },
+    "taskId": { "type": "string", "minLength": 1 },
+    "kind": {
+      "enum": ["image", "storyboard", "video", "avatar", "lipsync", "speech", "dub", "music", "sfx", "audio", "matte", "edit", "translation", "text"]
+    },
+    "prompt": { "type": "string" },
+    "negativePrompt": { "type": "string" },
+    "model": { "type": "string" },
+    "constraints": { "type": "object", "additionalProperties": true },
+    "params": { "type": "object", "additionalProperties": { "type": ["string", "number", "boolean"] } },
+    "direction": { "type": "object", "additionalProperties": true },
+    "inputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["ref", "role"],
+        "additionalProperties": false,
+        "properties": {
+          "ref": { "type": "string" },
+          "role": { "type": "string" },
+          "kind": { "type": "string" },
+          "id": { "type": "string" },
+          "assetId": { "type": "string" },
+          "taskId": { "type": "string" },
+          "sceneId": { "type": "string" },
+          "src": { "type": "string" },
+          "mimeType": { "type": "string" },
+          "hash": { "type": "string" },
+          "width": { "type": "integer" },
+          "height": { "type": "integer" },
+          "duration": { "type": "object", "additionalProperties": true }
+        }
+      }
+    },
+    "rights": { "type": "object", "additionalProperties": true },
+    "safety": { "type": "object", "additionalProperties": true },
+    "seed": { "type": "integer" }
+  }
+}

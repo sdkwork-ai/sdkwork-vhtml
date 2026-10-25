@@ -1,0 +1,12 @@
+services:
+  vhtml:
+    build: .
+    image: sdkwork/vhtml-studio:1.1.1
+    ports:
+      - "4173:4173"
+    environment:
+      VHTML_AUTH: ${VHTML_AUTH:-vhtml:change-me}
+      VHTML_CHROME_PATH: /usr/bin/chromium
+    volumes:
+      - ${VHTML_PROJECT:-./examples/02-product-promo}:/project
+    restart: unless-stopped

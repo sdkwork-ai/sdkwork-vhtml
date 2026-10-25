@@ -1,0 +1,70 @@
+{
+  "name": "@sdkwork/vhtml-studio",
+  "version": "1.1.1",
+  "description": "Deployable VHTML Studio server and HTML shell: local or authenticated remote preview, WYSIWYG/element editing, timeline, assets, captions, transitions, undo and export.",
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./server": {
+      "types": "./dist/server.d.ts",
+      "import": "./dist/server.js",
+      "default": "./dist/server.js"
+    },
+    "./client": {
+      "types": "./dist/client.d.ts",
+      "import": "./dist/client.js",
+      "default": "./dist/client.js"
+    },
+    "./package.json": "./package.json",
+    "./launcher": {
+      "types": "./dist/launcher.d.ts",
+      "import": "./dist/launcher.js",
+      "default": "./dist/launcher.js"
+    },
+    "./i18n": {
+      "types": "./dist/i18n.d.ts",
+      "import": "./dist/i18n.js",
+      "default": "./dist/i18n.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json && node ../../scripts/fix-declarations.mjs .",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@sdkwork/vhtml-core": "workspace:^",
+    "@sdkwork/vhtml-runtime": "workspace:^",
+    "@sdkwork/vhtml-media": "workspace:^",
+    "@sdkwork/vhtml-generation": "workspace:^",
+    "@sdkwork/vhtml-project": "workspace:^",
+    "@sdkwork/vhtml-ffmpeg": "workspace:^",
+    "parse5": "^7.3.0"
+  },
+  "keywords": [
+    "vhtml",
+    "studio",
+    "editor",
+    "wysiwyg",
+    "preview"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

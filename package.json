@@ -1,0 +1,46 @@
+{
+  "name": "@sdkwork/vhtml-workspace",
+  "version": "1.1.1",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "packageManager": "pnpm@12.4.1",
+  "engines": {
+    "node": ">=22.18.0"
+  },
+  "scripts": {
+    "build": "pnpm --filter \"./packages/*\" --workspace-concurrency=1 run build",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "pnpm build && node --test \"tests/unit/*.test.ts\" \"tests/integration/*.test.ts\"",
+    "test:unit": "pnpm build && node --test \"tests/unit/*.test.ts\"",
+    "test:integration": "pnpm build && node --test \"tests/integration/*.test.ts\"",
+    "check": "pnpm typecheck && pnpm test && node ./scripts/check-packages.mjs",
+    "check:packages": "node ./scripts/check-packages.mjs",
+    "examples": "pnpm build && node ./scripts/run-examples.mjs",
+    "vhtml": "node ./bin/vhtml.mjs",
+    "clean": "node ./scripts/clean.mjs",
+    "pack:all": "pnpm build && node ./scripts/pack-packages.mjs",
+    "verify:packages": "pnpm pack:all && node ./scripts/verify-packages.mjs",
+    "verify:videos": "pnpm examples && node ./scripts/verify-videos.mjs",
+    "publish:dry": "pnpm -r publish --dry-run --no-git-checks"
+  },
+  "devDependencies": {
+    "@sdkwork/vhtml": "workspace:*",
+    "@sdkwork/vhtml-cli": "workspace:*",
+    "@sdkwork/vhtml-core": "workspace:*",
+    "@sdkwork/vhtml-editor": "workspace:*",
+    "@sdkwork/vhtml-ffmpeg": "workspace:*",
+    "@sdkwork/vhtml-generation": "workspace:*",
+    "@sdkwork/vhtml-media": "workspace:*",
+    "@sdkwork/vhtml-project": "workspace:*",
+    "@sdkwork/vhtml-runtime": "workspace:*",
+    "@sdkwork/vhtml-schema": "workspace:*",
+    "@sdkwork/vhtml-sdk": "workspace:*",
+    "@sdkwork/vhtml-studio": "workspace:*",
+    "@types/node": "^24.19.2",
+    "ajv": "^8.20.0",
+    "ajv-formats": "^3.0.1",
+    "fflate": "0.8.3",
+    "typescript": "5.8"
+  }
+}

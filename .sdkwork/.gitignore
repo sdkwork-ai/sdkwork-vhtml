@@ -1,0 +1,5 @@
+# Local-only state — never commit
+local/
+tmp/
+cache/
+secrets/

@@ -1,0 +1,18 @@
+{
+  "version": "1.1",
+  "id": "08-code-video",
+  "entry": "video.vhtml",
+  "paths": {
+    "assets": "assets",
+    "images": "assets/images",
+    "video": "assets/video",
+    "audio": "assets/audio",
+    "fonts": "assets/fonts",
+    "scenes": "scenes",
+    "generated": "generated",
+    "renders": "renders",
+    "cache": ".vhtml/cache"
+  },
+  "preview": { "port": 4180, "open": false },
+  "export": { "outDir": "renders", "format": "mp4", "crf": 20 }
+}
