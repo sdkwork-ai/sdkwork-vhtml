@@ -10,12 +10,18 @@
 import {
   allClips,
   clipEnd,
+  declaredBase,
+  declaredParams,
   findTimeline,
   resolveReference,
+  AUDIO_EFFECT_TYPES,
+  TRANSITION_TYPES,
+  VISUAL_EFFECT_TYPES,
   type Animation,
   type CaptionClip,
   type Clip,
   type Effect,
+  type ExtensionKind,
   type Project,
   type Timeline,
   type TimelineClip,
@@ -441,7 +447,33 @@ function sampleElementStyles(
   return result;
 }
 
-function collectEffects(clip: Clip, layer: LayerAccumulator): {
+/**
+ * Desugar a declared plugin effect onto its built-in base behaviour
+ * (RFC-0015): built-in types pass through; declared types render as their
+ * base with declared defaults merged under the clip's own params. Unknown
+ * types pass through unchanged so the switch reports them.
+ */
+function effectiveEffect(
+  effect: Effect,
+  kind: ExtensionKind,
+  builtins: ReadonlySet<string>,
+  extensions: Project['extensions'] | undefined,
+): Effect {
+  if (builtins.has(effect.type)) return effect;
+  const base = declaredBase(extensions, kind, effect.type);
+  if (!base) return effect;
+  return {
+    ...effect,
+    type: base as Effect['type'],
+    params: { ...(declaredParams(extensions, effect.type) ?? {}), ...effect.params },
+  };
+}
+
+function collectEffects(
+  clip: Clip,
+  layer: LayerAccumulator,
+  extensions: Project['extensions'] | undefined,
+): {
   overlays: EffectOverlay[];
   chromaKey?: ChromaKeyState;
   borderRadius?: string;
@@ -454,8 +486,9 @@ function collectEffects(clip: Clip, layer: LayerAccumulator): {
   let clipPath = layer.clipPath;
   const issues: string[] = [];
 
-  for (const effect of clip.effects) {
-    if (!effect.enabled) continue;
+  for (const declared of clip.effects) {
+    if (!declared.enabled) continue;
+    const effect = effectiveEffect(declared, 'effect', VISUAL_EFFECT_TYPES, extensions);
     switch (effect.type) {
       case 'blur':
         layer.blur += effectNumber(effect, ['amount', 'radius', 'px'], 4);
@@ -573,6 +606,7 @@ function sampleClipLayer(
   localTime: Rational,
   trackOpacity: number,
   issues: string[],
+  extensions: Project['extensions'] | undefined = undefined,
 ): ClipStyleState {
   const layer: LayerAccumulator = {
     x: clip.transform.x,
@@ -610,7 +644,7 @@ function sampleClipLayer(
     if (animation.property === 'volume' || animation.property === 'pan') continue;
     applyAnimatedProperty(layer, animation.property, sample.value, animation.compose);
   }
-  const effects = collectEffects(clip, layer);
+  const effects = collectEffects(clip, layer, extensions);
   const style = buildLayerStyle(layer, trackOpacity);
   style.overlays = effects.overlays;
   style.chromaKey = effects.chromaKey;
@@ -926,6 +960,7 @@ export function evaluateFrame(
         localTime,
         track.opacity,
         issues,
+        project.extensions,
       );
       style.zIndex = isCaption ? 900_000 + clip.z : baseOrder + clip.z;
       const state: ClipFrameState = {
@@ -991,7 +1026,14 @@ export function evaluateFrame(
   }
 
   for (const track of timeline.tracks) {
-    for (const transition of track.transitions) {
+    for (const declaredTransition of track.transitions) {
+      // Declared plugin transitions (RFC-0015) render as their built-in base.
+      const base = TRANSITION_TYPES.has(declaredTransition.type)
+        ? undefined
+        : declaredBase(project.extensions, 'transition', declaredTransition.type);
+      const transition: Transition = base
+        ? { ...declaredTransition, type: base as Transition['type'] }
+        : declaredTransition;
       const from = states.get(transition.fromClipId);
       const to = states.get(transition.toClipId);
       if (!from || !to) continue;

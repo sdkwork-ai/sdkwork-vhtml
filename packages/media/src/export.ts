@@ -434,9 +434,6 @@ export async function exportProject(options: ExportOptions): Promise<ExportResul
   if (output.colorSpace === 'display-p3') {
     issues.push('Display-P3 output is tagged as BT.709 by the current FFmpeg profile; HDR/WCG delivery needs a dedicated pipeline');
   }
-  if (format === 'png-sequence' && (output.fit || output.width !== options.project.composition.width || output.height !== options.project.composition.height)) {
-    issues.push('PNG sequence writes composition-sized frames; delivery fit/dimensions are applied by video encoders only');
-  }
   let audioPath: string | undefined;
   let captionsPath: string | undefined;
 
@@ -531,6 +528,37 @@ export async function exportProject(options: ExportOptions): Promise<ExportResul
         }
       } finally {
         await renderer.close();
+      }
+      // Delivery fit/dimensions apply to PNG sequences too: resample the
+      // composition-sized frames with the same Lanczos cover/contain/stretch
+      // filter the video encoders use (audit gap: PNG fit was previously
+      // ignored and reported as an issue).
+      const needsResample = width !== options.project.composition.width
+        || height !== options.project.composition.height
+        || (options.fit ?? output.fit) !== undefined;
+      if (needsResample && totalFrames > 0) {
+        report('encode', 0, totalFrames, 'resampling frames to delivery size');
+        const scaledDir = path.join(tempRoot, 'png-delivery');
+        fs.mkdirSync(scaledDir, { recursive: true });
+        const filter = outputScaleFilter(width, height, options.fit ?? output.fit, output.background ?? options.project.composition.background);
+        await runEncoder([
+          '-nostdin', '-hide_banner', '-v', 'error', '-y',
+          '-framerate', `${fps.num}/${fps.den}`,
+          '-start_number', '0',
+          '-i', path.join(target.path, 'frame-%06d.png'),
+          '-frames:v', String(totalFrames),
+          '-vf', filter,
+          '-start_number', '0',
+          path.join(scaledDir, 'frame-%06d.png'),
+        ], options.signal);
+        for (let frame = 0; frame < totalFrames; frame += 1) {
+          const scaled = path.join(scaledDir, `frame-${String(frame).padStart(6, '0')}.png`);
+          if (!fs.existsSync(scaled)) {
+            throw new VhtmlError(ErrorCode.EXPORT_ENCODER_FAILED, `delivery resampling produced no frame ${frame}`);
+          }
+          fs.copyFileSync(scaled, path.join(target.path, `frame-${String(frame).padStart(6, '0')}.png`));
+        }
+        report('encode', totalFrames, totalFrames, 'delivery resampling complete');
       }
       if (audioPath) {
         const audioOut = path.join(target.path, 'soundtrack.wav');
@@ -653,6 +681,19 @@ function exportReport(result: ExportResult, options: ExportOptions): Record<stri
     ...options.project.generations.map((task) => task.rights?.license),
   ]);
   const consents = uniqueStrings(options.project.generations.map((task) => task.rights?.consent));
+  // RFC-0013 usage ledger: per-task records plus run totals over the same
+  // currency family recorded on the tasks.
+  const usageTasks = options.project.generations.filter((task) => task.usage);
+  const usageTotals = usageTasks.reduce(
+    (totals, task) => ({
+      cost: totals.cost + (task.usage?.cost ?? 0),
+      credits: totals.credits + (task.usage?.credits ?? 0),
+      tokens: totals.tokens + (task.usage?.tokens ?? 0),
+      computeSeconds: totals.computeSeconds + (task.usage?.computeSeconds ?? 0),
+      outputBytes: totals.outputBytes + (task.usage?.outputBytes ?? 0),
+    }),
+    { cost: 0, credits: 0, tokens: 0, computeSeconds: 0, outputBytes: 0 },
+  );
   return {
     schema: 'vhtml.export-report/1',
     vhtml: '1.1',
@@ -706,10 +747,12 @@ function exportReport(result: ExportResult, options: ExportOptions): Record<stri
         provider: task.provider,
         model: task.model,
         status: task.status,
+        usage: task.usage,
         review: task.review?.status,
         rights: task.rights,
         safety: task.safety,
       })),
+      usageTotals,
       licenses,
       consents,
       aiDisclosure: options.project.generations.some((task) => task.rights?.aiDisclosure === true),

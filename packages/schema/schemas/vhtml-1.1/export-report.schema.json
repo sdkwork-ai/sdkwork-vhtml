@@ -88,10 +88,36 @@
               "provider": { "type": "string" },
               "model": { "type": "string" },
               "status": { "type": "string" },
+              "usage": {
+                "type": "object",
+                "additionalProperties": true,
+                "description": "RFC-0013 per-task usage record.",
+                "properties": {
+                  "cost": { "type": "number", "minimum": 0 },
+                  "currency": { "type": "string" },
+                  "tokens": { "type": "number", "minimum": 0 },
+                  "credits": { "type": "number", "minimum": 0 },
+                  "computeSeconds": { "type": "number", "minimum": 0 },
+                  "outputBytes": { "type": "number", "minimum": 0 },
+                  "recordedAt": { "type": "string" }
+                }
+              },
               "review": { "type": "string" },
               "rights": { "type": "object", "additionalProperties": true },
               "safety": { "type": "object", "additionalProperties": true }
             }
+          }
+        },
+        "usageTotals": {
+          "type": "object",
+          "additionalProperties": true,
+          "description": "RFC-0013 run totals over the recorded usage records.",
+          "properties": {
+            "cost": { "type": "number", "minimum": 0 },
+            "credits": { "type": "number", "minimum": 0 },
+            "tokens": { "type": "number", "minimum": 0 },
+            "computeSeconds": { "type": "number", "minimum": 0 },
+            "outputBytes": { "type": "number", "minimum": 0 }
           }
         }
       }

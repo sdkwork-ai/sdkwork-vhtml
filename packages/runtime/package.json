@@ -1,6 +1,6 @@
 {
   "name": "@sdkwork/vhtml-runtime",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "Deterministic Chromium frame runtime for VHTML: stage builder, browser clock/seek runtime, renderer, local project server and capabilities.",
   "type": "module",
   "license": "MIT",

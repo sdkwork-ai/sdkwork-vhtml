@@ -36,6 +36,8 @@ import {
   scene as buildScene,
   storyboardShot as buildStoryboardShot,
   generationTask as buildGenerationTask,
+  bible as buildBible,
+  extension as buildExtension,
   t3,
   transitionId,
   type AssetSpec,
@@ -68,6 +70,10 @@ export {
   lane,
   marker,
   durationFrames,
+  bible,
+  character,
+  styleGuide,
+  extension,
   resetAuthoringIds,
 } from '@sdkwork/vhtml-core/authoring';
 export type {
@@ -86,6 +92,8 @@ export type {
   OutputSpec,
   GenerationSpec,
   StoryboardShotSpec,
+  BibleSpec,
+  ExtensionSpec,
 } from '@sdkwork/vhtml-core/authoring';
 // Internal helpers re-exported for tooling compatibility.
 export { resolveClipKind, createSceneIndex } from '@sdkwork/vhtml-core/authoring';
@@ -113,6 +121,15 @@ export interface VideoDefinition {
   captionStyle?: string;
   markers?: MarkerSpec[];
   generations?: GenerationSpec[];
+  /**
+   * Versioned character bible library (RFC-0014). Accepts plain specs or
+   * pre-built profiles; entries default to `kind: 'character'`.
+   */
+  characters?: Array<import('@sdkwork/vhtml-core/authoring').BibleSpec | import('@sdkwork/vhtml-core/model').BibleProfile>;
+  /** Versioned style guides; merged into the bible library (RFC-0014). */
+  styleGuides?: Array<Omit<import('@sdkwork/vhtml-core/authoring').BibleSpec, 'kind'> | import('@sdkwork/vhtml-core/model').BibleProfile>;
+  /** Declared extensions / effect-transition plugin registry (RFC-0015). */
+  extensions?: import('@sdkwork/vhtml-core/authoring').ExtensionSpec[];
   storyboard?: StoryboardShotSpec[];
   outputs?: OutputSpec[];
   metadata?: Record<string, string>;
@@ -153,6 +170,11 @@ export function defineVideo(definition: VideoDefinition): Project {
   for (const generation of definition.generations ?? []) {
     generations.set(generation.id, buildGenerationTask(generation, fps));
   }
+  const bibles = [
+    ...(definition.characters ?? []).map((spec) => buildBible({ ...spec, kind: spec.kind ?? 'character' })),
+    ...(definition.styleGuides ?? []).map((spec) => buildBible({ ...spec, kind: 'style' })),
+  ];
+  const extensionDeclarations = (definition.extensions ?? []).map(buildExtension);
   const composition: Composition = {
     width: definition.width ?? 1920,
     height: definition.height ?? 1080,
@@ -293,6 +315,7 @@ export function defineVideo(definition: VideoDefinition): Project {
     scenes: [...scenes.values()],
     timelines: [timeline],
     generations: [...generations.values()],
+    bibles: bibles.length ? bibles : undefined,
     storyboard: (definition.storyboard ?? []).map((shotSpec, shotIndex) =>
       buildStoryboardShot(shotSpec, shotIndex + 1, fps),
     ),
@@ -300,6 +323,7 @@ export function defineVideo(definition: VideoDefinition): Project {
     styles: definition.styles ?? [],
     animations: [],
     metadata: definition.metadata ?? {},
+    extensions: extensionDeclarations.length ? Object.fromEntries(extensionDeclarations.map((declaration) => [declaration.name, declaration])) : undefined,
     mainTimeline: 'main',
   };
   return project;

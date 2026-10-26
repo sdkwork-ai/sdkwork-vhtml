@@ -88,3 +88,34 @@ test('exports an MP4 with mixed audio and a WebVTT sidecar', { skip: !toolsAvail
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('PNG sequence honors delivery fit and dimensions', { skip: !toolsAvailable() && 'Chrome/FFmpeg not available', timeout: 180_000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vhtml-pngfit-'));
+  try {
+    const source = `<project id="png-fit" version="1.1"><settings><composition width="320" height="180" frame-rate="30/1" duration="1s" background="#101018" /></settings>
+<scenes><scene id="s" duration="1s"><div style="position:absolute;inset:0;background:#0b1020;color:#6ee7ff;font:700 24px system-ui">PNG</div></scene></scenes>
+<timelines><timeline id="main" duration="1s"><lane id="v" type="video"><clip id="c" ref="s" start="0s" duration="1s" /></lane></timeline></timelines>
+<output id="frames" format="png-sequence" width="160" height="90" fit="contain" frame-rate="30/1" path="renders/frames" /></project>`;
+    const parsed = parseVhtml(source, { file: path.join(root, 'project.vhtml'), root });
+    const output = parsed.document.project.outputs[0]!;
+    const result = await exportProject({
+      project: parsed.document.project,
+      root,
+      output,
+      outputPath: path.join(root, 'frames'),
+      rangeDuration: { num: 1, den: 1 },
+      timeoutMs: 60_000,
+    });
+    assert.equal(result.format, 'png-sequence');
+    assert.equal(result.width, 160);
+    assert.equal(result.height, 90);
+    const firstFrame = path.join(root, 'frames', 'frame-000000.png');
+    assert.ok(fs.existsSync(firstFrame), 'resampled frame exists');
+    assert.ok(!result.issues.some((issue) => issue.includes('delivery fit')), 'no delivery-fit issue remains');
+    const probe = await probeMedia(firstFrame);
+    assert.equal(probe.video?.width, 160);
+    assert.equal(probe.video?.height, 90);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

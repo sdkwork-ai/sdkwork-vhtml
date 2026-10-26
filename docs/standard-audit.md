@@ -1,4 +1,4 @@
-# Standard Audit — VHTML 1.1.1
+# Standard Audit — VHTML 1.1.2
 
 This audit records concrete gaps found in the current standard/implementation and
 the changes made in this round. It is intentionally not a claim of perfection:
@@ -48,6 +48,10 @@ controlled upgrade path.
 | Industry alignment | No explicit mapping to OTIO/EBU R128/C2PA/social platforms | `industry-alignment.md` + `commercial.md` define mappings and honest gaps |
 | AI provider protocol | No machine-readable request/response schema | Provider request/response JSON Schemas + tests |
 | Visual/audio inconsistency | Channels >2 and Display-P3 were silently changed by export | Explicit export issues instead of silent behavior |
+| AI cost/quota (1.1.2) | Generation had no portable budget fields; costs lived only in provider logs | `<generate><usage>` record (cost/currency/tokens/credits/compute-seconds/output-bytes/recorded-at), observed + provider-reported accounting in `materializeGenerations` via the `GenerationRun` envelope, `GenerateOptions.quota`/CLI `--max-cost/--max-credits/--max-compute-seconds` with `GENERATION_QUOTA_EXCEEDED` before further provider calls, export-report `usage`/`usageTotals`, injectable `providers` for tests/hosts; RFC-0013, generation.md §13 |
+| AI character memory (1.1.2) | Cross-shot consistency relied on reference assets/prompts repeated per task | `<characters>` library of versioned `BibleProfile` (character/style-guide) with description/negative/reference anchors; `character:`/`style:` reference namespaces resolved against the library (missing bible fails before any provider call); full bible profile participates in the generation cache key (version bump invalidates); `bibles` section in `buildVendorPayload` — prompts are never silently rewritten; SDK `character()/styleGuide()/bible()` + `defineVideo({characters, styleGuides})` + program `vhtml.addCharacter/addStyleGuide`; RFC-0014, generation.md §14 |
+| Effect/transition plugin registry (1.1.2) | Effect/transition types were hard-coded; third-party packs had no verifiable contract | `<extension kind="effect|audio-effect|transition" base="<builtin>">` plugin declarations with declared default `<params>`; validator accepts declared types (unknown ones still warn) and rejects declarations whose `base` is not a built-in of the same family (`EXTENSION_INVALID`); renderer/mixer desugar declared types onto their base deterministically (clip params override defaults); built-in type sets hoisted to Core Model constants (`VISUAL_EFFECT_TYPES`/`AUDIO_EFFECT_TYPES`/`TRANSITION_TYPES`) as the single source of truth; RFC-0015 |
+| PNG-sequence delivery fit (1.1.2) | PNG path wrote composition-size frames and emitted an explicit issue | Export resamples the frame sequence to the delivery size/fit with the same Lanczos cover/contain/stretch filter used by video encoders; integration test verifies 160×90 contain output and no fit issue |
 
 ## Remaining high-priority gaps
 
@@ -55,18 +59,14 @@ controlled upgrade path.
 |---|---|---|
 | HDR / WCG / alpha delivery | `display-p3` is declared but encoded as BT.709; no alpha WebM/ProRes | Explicit color pipeline, alpha-capable codecs, capability flags |
 | Automatic reframe / safe-area layout | Profiles expose safe areas but do not move content | Responsive scene variants or declarative anchors; never mutate authored HTML implicitly |
-| Effect/transition plugin registry | Types are hard-coded; third-party effects have no contract | Versioned effect schema, parameter definitions, capability negotiation |
-| Audio ducking / sidechain / >2ch | Podcast/interview mixes need it; encoder downmixes silently | Sidechain graph, channel layout, explicit downmix policy |
+| Audio ducking / sidechain / >2ch | Podcast/interview mixes need it; encoder downmixes silently | Sidechain graph, channel layout, explicit downmix policy (ducking ≤2ch shipped in RFC-0010; >2ch policy still open) |
 | Collaborative locking and history | Remote creation is single-writer | Project lock, conflict detection, revision history/CRDT boundary |
 | Incremental render and proxies | Full re-render is expensive for long videos | Frame cache keyed by model hash, proxy media, render manifest |
-| PNG-sequence delivery fit | PNG path writes composition size | Renderer-level fit or post-scale; currently emits an explicit issue |
 | Golden conformance | Only structural/temporal tests are broad | Golden frames/audio for every transition/effect under pinned Chrome |
 | AI content credentials | Rights/disclosure are declarations, not cryptographic proof | C2PA/content credentials, watermark adapters, publish-side checks |
-| AI cost/quota | No portable budget fields | Optional cost/quota metadata, provider usage reports, preflight estimates |
-| AI character memory | Consistency relies on reference assets/prompts | Versioned character/style bibles and embedding references |
 | AI evaluation | No quality benchmark per model/prompt | Prompt suites, shot-level scoring, human review integration |
-| Storyboard→timeline application | Storyboard is planning; no automatic shot-to-clip materialisation | Explicit “apply shot(s) to timeline” operation with collision policies |
 | Storyboard versioning | Shot history is project-level undo only | Per-shot revisions, comments and approval history |
+| Custom-effect sandboxed rendering | RFC-0015 desugars declared types onto built-in bases; genuinely custom render behavior is out of scope | Future proposal: sandboxed effect hooks with deterministic contracts and capability negotiation |
 
 ## What "perfect" means here
 

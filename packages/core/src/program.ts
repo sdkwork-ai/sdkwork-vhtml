@@ -21,10 +21,12 @@ import { ErrorCode, type Diagnostic, errorDiagnostic } from './errors.ts';
 import {
   type Asset,
   type AuthoringProgram,
+  type BibleProfile,
   type Clip,
   type DataBlock,
   type Effect,
   type EasingName,
+  type ExtensionDeclaration,
   type GenerationTask,
   type Marker,
   type OutputConfig,
@@ -56,8 +58,13 @@ import {
   storyboardShot,
   timeRemap,
   transitionId,
+  character,
+  styleGuide,
+  extension as extensionBuilder,
+  type BibleSpec,
   type CaptionSpec,
   type ClipSpec,
+  type ExtensionSpec,
   type GenerationSpec,
   type LaneSpec,
   type MarkerSpec,
@@ -242,6 +249,9 @@ export function createAuthoringApi(
     timeRemap: (spec: Parameters<typeof timeRemap>[0]): TimeRemap => timeRemap(spec, fps),
     marker: (spec: MarkerSpec): Marker => buildMarker(spec, fps),
     generation: (spec: GenerationSpec): GenerationTask => generationTask(spec, fps),
+    character: (spec: Omit<BibleSpec, 'kind'>): BibleProfile => character(spec),
+    styleGuide: (spec: Omit<BibleSpec, 'kind'>): BibleProfile => styleGuide(spec),
+    extension: (spec: ExtensionSpec): ExtensionDeclaration => extensionBuilder(spec),
     output: (spec: OutputSpec): OutputConfig => outputConfig(spec, project.composition, project.outputs.length, project.mainTimeline),
     storyboardShot: (spec: StoryboardShotSpec) => storyboardShot(spec, 0, fps),
     lane: (type: TrackType, id: string, clips: ClipSpec[], options: Omit<LaneSpec, 'type' | 'id' | 'clips'> = {}) =>
@@ -401,6 +411,30 @@ export function createAuthoringApi(
         throw new Error(`generation task "${value.id}" already exists`);
       }
       project.generations.push(value);
+      return value;
+    },
+    addCharacter(spec: BibleSpec | BibleProfile): BibleProfile {
+      const value = 'kind' in spec && 'references' in spec ? spec as BibleProfile : character(spec as Omit<BibleSpec, 'kind'>);
+      project.bibles ??= [];
+      if (project.bibles.some((candidate) => candidate.id === value.id)) {
+        throw new Error(`bible "${value.id}" already exists`);
+      }
+      project.bibles.push({ ...value, kind: 'character' });
+      return value;
+    },
+    addStyleGuide(spec: BibleSpec | BibleProfile): BibleProfile {
+      const value = 'kind' in spec && 'references' in spec ? spec as BibleProfile : styleGuide(spec as Omit<BibleSpec, 'kind'>);
+      project.bibles ??= [];
+      if (project.bibles.some((candidate) => candidate.id === value.id)) {
+        throw new Error(`bible "${value.id}" already exists`);
+      }
+      project.bibles.push({ ...value, kind: 'style' });
+      return value;
+    },
+    addExtension(spec: ExtensionSpec | ExtensionDeclaration): ExtensionDeclaration {
+      const value = 'required' in spec ? spec as ExtensionDeclaration : extensionBuilder(spec as ExtensionSpec);
+      project.extensions ??= {};
+      project.extensions[value.name] = value;
       return value;
     },
     addStoryboardShot(spec: StoryboardShotSpec | ReturnType<typeof storyboardShot>): ReturnType<typeof storyboardShot> {

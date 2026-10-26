@@ -57,7 +57,7 @@ export const GENERATION_KINDS = [
 export function capabilityReport(options: { browserVersion?: string; ffmpegVersion?: string; frameRate?: Rate } = {}): CapabilityReport {
   return {
     implementation: '@sdkwork/vhtml',
-    version: '1.1.1',
+    version: '1.1.2',
     specVersion: '1.1',
     profiles: {
       parser: true,
@@ -109,6 +109,9 @@ export function capabilityReport(options: { browserVersion?: string; ffmpegVersi
       'audio-ducking': 'sidechain ducking (threshold, reduction, attack, release, hold) in the export mixer',
       'av-sync': 'unified rational project time; per-clip audio-offset (lip-sync/latency correction); SMPTE frame timecodes (HH:MM:SS:FF, drop-frame ;FF); time-remap audio with exact curve reads',
       'caption-import': 'SRT/WebVTT parsing (parseSubtitleBlocks / vhtml.parseCaptions) for code-first caption alignment',
+      'generation-usage': 'per-task usage records (<usage> cost/credits/tokens/compute-seconds), quota ceilings and export-report totals',
+      'character-bibles': 'versioned character/style bible library (<characters>) referenced as character:/style: inputs; versions participate in the generation cache key',
+      'effect-registry': 'declared effect/audio-effect/transition types via <extension kind=... base=...>; renderers desugar onto the built-in base',
       chapters: true,
       'delivery-presets': 'web, social vertical/square/portrait, cinema, GIF and audio-only profiles',
     },

@@ -1,6 +1,6 @@
 {
   "name": "@sdkwork/vhtml-generation",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "VHTML generation task pipeline: procedural/manifest/HTTP providers, content-addressed cache, provenance and asset materialisation.",
   "type": "module",
   "license": "MIT",

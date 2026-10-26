@@ -5,6 +5,14 @@ import { defineVideo, lane, clip } from '@sdkwork/vhtml/sdk';
  *   image cover -> video shot (first-frame dependency)
  *   music bed + whoosh SFX
  *
+ * The character & style bibles (RFC-0014) declare the canonical host and
+ * brand look once; every generation references them through
+ * `character:`/`style:` inputs, and bumping a bible's `version` invalidates
+ * cached generations. `<usage>` records (RFC-0013) capture what each task
+ * cost once a real provider runs; the offline `procedural` provider reports
+ * observed compute time. The `brandDip` extension (RFC-0015) declares a house
+ * transition that any compliant renderer desugars onto the built-in dip.
+ *
  * `procedural` is deterministic and needs no network. Swap the provider/model
  * for `http` to use a real image/video/music service.
  */
@@ -17,6 +25,28 @@ export default defineVideo({
   duration: '3s',
   background: '#070c16',
   scenes: [],
+  characters: [
+    {
+      id: 'aria',
+      version: 2,
+      name: 'Aria',
+      description: 'A silver-haired product host in a teal flight jacket; confident, calm.',
+      negative: 'no glasses, no hat, no logos on the jacket',
+      references: [{ ref: 'gen:cover', role: 'reference-image' }],
+    },
+  ],
+  styleGuides: [
+    {
+      id: 'teal-cinematic',
+      version: 1,
+      name: 'Teal Cinematic',
+      description: 'Teal-and-amber cinematic grade, soft rim light, shallow depth, premium minimalism.',
+      negative: 'no harsh flash, no saturated neon',
+    },
+  ],
+  extensions: [
+    { name: 'brandDip', kind: 'transition', base: 'dip', version: '1.0.0', params: { color: '#0b2740' } },
+  ],
   generations: [
     {
       id: 'cover',
@@ -24,6 +54,10 @@ export default defineVideo({
       provider: 'procedural',
       prompt: 'cinematic teal cover frame, soft light, abstract product stage',
       constraints: { width: 1280, height: 720, seed: 12 },
+      inputs: [
+        { ref: 'character:aria', role: 'character' },
+        { ref: 'style:teal-cinematic', role: 'style' },
+      ],
       direction: {
         image: { style: 'cinematic', composition: 'centered', background: 'teal gradient' },
         shot: { framing: 'wide', lighting: 'soft rim light', mood: 'premium' },
@@ -36,7 +70,11 @@ export default defineVideo({
       prompt: 'slow camera push through a teal product stage with floating light',
       model: 'procedural-gradient-v1',
       constraints: { duration: '3s', width: 1280, height: 720, frameRate: '30/1', seed: 12 },
-      inputs: [{ ref: 'gen:cover', role: 'first-frame' }],
+      inputs: [
+        { ref: 'gen:cover', role: 'first-frame' },
+        { ref: 'character:aria', role: 'character' },
+        { ref: 'style:teal-cinematic', role: 'style' },
+      ],
       direction: {
         shot: { camera: 'slow push in', framing: 'wide', continuity: 'same teal palette' },
         video: { firstFrame: 'gen:cover', loop: false },

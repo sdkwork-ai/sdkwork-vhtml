@@ -43,6 +43,11 @@ import {
   type GenerationRights,
   type GenerationSafety,
   type GenerationTask,
+  type GenerationUsage,
+  type BibleProfile,
+  type BibleReference,
+  type ExtensionDeclaration,
+  type ExtensionKind,
   type Keyframe,
   type Marker,
   type MediaClip,
@@ -299,7 +304,8 @@ const VHTML_SELF_CLOSING_TAGS = new Set([
   'timelines', 'timeline', 'lane', 'clip', 'cue', 'transition', 'transitions', 'effect',
   'effects', 'audio-effect', 'animate', 'animations', 'keyframe', 'transform', 'crop',
   'generate', 'generations', 'prompt', 'negative-prompt', 'gen-input', 'constraints',
-  'params', 'direction', 'review', 'rights', 'safety', 'gen-output', 'outputs', 'output', 'markers', 'marker', 'metadata',
+  'params', 'direction', 'review', 'rights', 'safety', 'usage', 'gen-output', 'outputs', 'output', 'markers', 'marker', 'metadata',
+  'characters', 'character', 'style-guide', 'reference', 'negative', 'extensions',
   'storyboard', 'shot', 'description', 'notes',
   'requirements', 'requires', 'extension', 'license', 'tracks', 'lanes', 'captions',
   'timeremap', 'time-remap', 'remap', 'data', 'program', 'param',
@@ -436,6 +442,8 @@ class VhtmlParser {
     this.parseAssets();
     this.parseScenes();
     this.parseGenerations();
+    this.parseBibles();
+    this.parseExtensions();
     this.parseStoryboard();
     this.parseTimelines();
     this.parseProjectAnimations();
@@ -1242,6 +1250,11 @@ class VhtmlParser {
           role: this.attr(outputEl, 'role'),
         });
       }
+      const usageEl = this.direct(el, 'usage')[0];
+      let usage: GenerationUsage | undefined;
+      if (usageEl) {
+        usage = this.parseGenerationUsage(usageEl, id);
+      }
       if (!constraints.duration) {
         const duration = this.timeAttr(el, 'duration');
         if (duration) constraints.duration = duration;
@@ -1259,6 +1272,7 @@ class VhtmlParser {
         direction,
         outputs,
         status: 'draft',
+        usage,
         review,
         rights,
         safety,
@@ -1268,6 +1282,110 @@ class VhtmlParser {
       };
       this.project.generations.push(task);
     }
+  }
+
+  /** Parse a `<usage>` consumption record (RFC-0013). */
+  private parseGenerationUsage(el: PElement, taskId: string): GenerationUsage {
+    const usage: GenerationUsage = {};
+    const numbers: Array<[keyof GenerationUsage, string]> = [
+      ['cost', 'cost'],
+      ['tokens', 'tokens'],
+      ['credits', 'credits'],
+      ['computeSeconds', 'compute-seconds'],
+      ['outputBytes', 'output-bytes'],
+    ];
+    for (const [key, attr] of numbers) {
+      const raw = this.attr(el, attr);
+      if (raw === undefined) continue;
+      const value = Number(raw);
+      if (!Number.isFinite(value) || value < 0) {
+        this.error(
+          ErrorCode.VALIDATION_OUT_OF_RANGE,
+          `<usage ${attr}> on generation "${taskId}" must be a non-negative number, got "${raw}"`,
+          el,
+          { objectId: taskId },
+        );
+        continue;
+      }
+      usage[key] = value;
+    }
+    const currency = this.attr(el, 'currency');
+    if (currency) usage.currency = currency;
+    const recordedAt = this.attr(el, 'recorded-at');
+    if (recordedAt) usage.recordedAt = recordedAt;
+    const known = new Set(['id', 'cost', 'currency', 'tokens', 'credits', 'compute-seconds', 'output-bytes', 'recorded-at']);
+    for (const attr of el.attrs) {
+      if (known.has(attr.name)) continue;
+      usage[attr.name] = attr.value;
+    }
+    return usage;
+  }
+
+  /**
+   * Parse the character & style bible library (RFC-0014). Children may sit
+   * inside a `<characters>` container or directly under `<project>`.
+   */
+  private parseBibles(): void {
+    for (const el of this.wrapped(this.projectEl, 'characters', 'character')) {
+      const bible = this.parseBible(el, 'character');
+      if (bible) this.pushBible(bible, el);
+    }
+    for (const el of this.wrapped(this.projectEl, 'characters', 'style-guide')) {
+      const bible = this.parseBible(el, 'style');
+      if (bible) this.pushBible(bible, el);
+    }
+  }
+
+  private pushBible(bible: BibleProfile, el: PElement): void {
+    this.project.bibles ??= [];
+    if (this.project.bibles.some((existing) => existing.id === bible.id)) {
+      this.error(
+        ErrorCode.PARSE_DUPLICATE_ID,
+        `duplicate ${bible.kind === 'character' ? '<character>' : '<style-guide>'} id "${bible.id}"`,
+        el,
+        { objectId: bible.id },
+      );
+      return;
+    }
+    this.project.bibles.push(bible);
+  }
+
+  private parseBible(el: PElement, kind: BibleProfile['kind']): BibleProfile | undefined {
+    const id = this.idFor(el, kind === 'character' ? 'character' : 'style-guide', true);
+    const tag = kind === 'character' ? '<character>' : '<style-guide>';
+    const versionRaw = this.attr(el, 'version');
+    let version: number | undefined;
+    if (versionRaw !== undefined) {
+      version = Number(versionRaw);
+      if (!Number.isInteger(version) || version < 1) {
+        this.error(
+          ErrorCode.VALIDATION_OUT_OF_RANGE,
+          `${tag} id="${id}" version must be a positive integer, got "${versionRaw}"`,
+          el,
+          { objectId: id },
+        );
+        version = undefined;
+      }
+    }
+    const references: BibleReference[] = [];
+    for (const refEl of this.direct(el, 'reference')) {
+      const ref = this.requiredAttr(refEl, 'ref', '<reference>');
+      if (ref) references.push({ ref, role: this.attr(refEl, 'role') ?? (kind === 'character' ? 'character' : 'style') });
+    }
+    const descriptionEl = this.direct(el, 'description')[0];
+    const negativeEl = this.direct(el, 'negative')[0];
+    const bible: BibleProfile = {
+      kind,
+      id,
+      version,
+      name: this.attr(el, 'name'),
+      description: (this.attr(el, 'description') ?? (descriptionEl ? textOf(descriptionEl) : '')).trim() || undefined,
+      negative: (negativeEl ? textOf(negativeEl) : '').trim() || undefined,
+      references,
+      metadata: {},
+      source: this.loc(el),
+    };
+    return bible;
   }
 
   private parseGenerationConstraints(el: PElement): GenerationConstraints {
@@ -2193,8 +2311,12 @@ class VhtmlParser {
       return undefined;
     }
     const typeRaw = this.attr(el, 'type') ?? 'crossfade';
-    const type = TRANSITION_TYPES.has(typeRaw as TransitionType) ? (typeRaw as TransitionType) : 'crossfade';
-    if (!TRANSITION_TYPES.has(typeRaw as TransitionType)) {
+    // Built-in types pass through; declared plugin types (RFC-0015) are kept
+    // verbatim and desugared onto their extension base at render time.
+    const isBuiltIn = TRANSITION_TYPES.has(typeRaw as TransitionType);
+    const isDeclared = !isBuiltIn && this.isDeclaredTransitionType(typeRaw);
+    const type = (isBuiltIn || isDeclared ? typeRaw : 'crossfade') as Transition['type'];
+    if (!isBuiltIn && !isDeclared) {
       this.error(ErrorCode.VALIDATION_INVALID_VALUE, `unknown transition type "${typeRaw}"`, el, { objectId: id });
     }
     const directionRaw = this.attr(el, 'direction') ?? 'left';
@@ -2318,15 +2440,61 @@ class VhtmlParser {
       const feature = this.attr(reqEl, 'feature', 'name');
       if (feature) this.project.requirements!.push(feature);
     }
-    for (const extEl of this.direct(this.projectEl, 'extension')) {
+  }
+
+  /**
+   * Parse the extension registry (RFC-0015). Runs before timelines so that
+   * declared effect/transition types are known while lanes are parsed.
+   */
+  private parseExtensions(): void {
+    for (const extEl of this.wrapped(this.projectEl, 'extensions', 'extension')) {
       const name = this.requiredAttr(extEl, 'name', '<extension>');
       if (!name) continue;
-      this.project.extensions ??= {};
-      this.project.extensions[name] = {
-        version: this.attr(extEl, 'version') ?? '1',
+      const kindRaw = this.attr(extEl, 'kind');
+      const EXTENSION_KINDS: ExtensionKind[] = ['effect', 'audio-effect', 'transition'];
+      let kind: ExtensionKind | undefined;
+      if (kindRaw !== undefined) {
+        if ((EXTENSION_KINDS as string[]).includes(kindRaw)) {
+          kind = kindRaw as ExtensionKind;
+        } else {
+          this.error(
+            ErrorCode.VALIDATION_INVALID_VALUE,
+            `<extension name="${name}"> kind must be "effect", "audio-effect" or "transition", got "${kindRaw}"`,
+            extEl,
+            { objectId: name },
+          );
+        }
+      }
+      const declaration: ExtensionDeclaration = {
+        name,
+        version: this.attr(extEl, 'version'),
         required: parseBool(this.attr(extEl, 'required'), false),
       };
+      if (kind) {
+        declaration.kind = kind;
+        declaration.base = this.attr(extEl, 'base');
+        if (!declaration.base) {
+          this.error(
+            ErrorCode.PARSE_MISSING_ATTRIBUTE,
+            `<extension name="${name}" kind="${kind}"> requires a "base" builtin behaviour to render as`,
+            extEl,
+            { objectId: name },
+          );
+        }
+        const paramsEl = this.direct(extEl, 'params')[0];
+        if (paramsEl) {
+          declaration.params = {};
+          for (const attr of paramsEl.attrs) declaration.params[attr.name] = convertParam(attr.value);
+        }
+      }
+      this.project.extensions ??= {};
+      this.project.extensions[name] = declaration;
     }
+  }
+
+  /** True when a transition type is declared by a plugin extension. */
+  private isDeclaredTransitionType(typeName: string): boolean {
+    return this.project.extensions?.[typeName]?.kind === 'transition';
   }
 
   /** Element/type names that carry the authoring program (code extension). */

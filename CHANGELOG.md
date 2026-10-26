@@ -1,5 +1,67 @@
 # Changelog
 
+## 1.1.2
+
+### Generation usage & quota (RFC-0013)
+
+- `<generate><usage>` record: `cost`/`currency`, `tokens`, `credits`,
+  `compute-seconds`, `output-bytes`, `recorded-at` (model
+  `GenerationTask.usage`); vendor units round-trip as extra attributes.
+- `materializeGenerations` records observed compute time + output bytes per
+  provider call; providers may return a `GenerationRun` envelope with
+  provider-reported `usage` and `providerJobId` (bare `GeneratedFile[]` stays
+  valid).
+- Spending ceilings: `GenerateOptions.quota` / CLI `--max-cost`,
+  `--max-credits`, `--max-compute-seconds`, `--currency`; exceeding a cap
+  fails with the new stable code `GENERATION_QUOTA_EXCEEDED` before further
+  provider calls.
+- Export report (`vhtml.export-report/1`): per-generation `usage` plus
+  `provenance.usageTotals`.
+- `GenerateOptions.providers` injects/overrides the provider registry
+  (tests, embedded hosts).
+- generation.md §13; schemas: model `usage`, export-report `usage` +
+  `usageTotals`; `--json` generate output includes `usage`.
+
+### Character & style bibles (RFC-0014)
+
+- `<characters>` project library of versioned `BibleProfile` entries:
+  `<character>` / `<style-guide>` with `<description>`, `<negative>` and
+  `<reference ref role/>` anchors.
+- `character:`/`style:` reference namespaces resolve against the library;
+  a missing bible fails generation before any provider call.
+- Bible profiles (including reference file hashes) participate in the
+  generation cache key — bumping `version` invalidates cached outputs.
+- `buildVendorPayload` carries a resolved `bibles` section; prompts are never
+  silently rewritten.
+- Code-first: SDK `character()` / `styleGuide()` / `bible()` builders +
+  `defineVideo({ characters, styleGuides })`; authoring program
+  `vhtml.addCharacter` / `vhtml.addStyleGuide`.
+- generation.md §14; schema `bibleProfile` + `project.bibles`.
+
+### Effect/transition plugin registry (RFC-0015)
+
+- `<extension kind="effect|audio-effect|transition" base="<builtin>">`
+  declares a custom type that renders as its built-in base; declared default
+  `<params>` merge under clip params.
+- Validator: declared types no longer warn; declarations must desugar onto a
+  same-family built-in (`EXTENSION_INVALID`).
+- Runtime/mixer desugar declared effect and transition types deterministically;
+  built-in type sets are hoisted to Core Model constants
+  (`VISUAL_EFFECT_TYPES` / `AUDIO_EFFECT_TYPES` / `TRANSITION_TYPES`).
+- Code-first: SDK `extension()` builder + `defineVideo({ extensions })`;
+  authoring program `vhtml.addExtension`.
+
+### Delivery & docs
+
+- PNG-sequence export now honors delivery fit/dimensions (same Lanczos
+  cover/contain/stretch filter as video encoders) instead of writing
+  composition-size frames with an explicit issue.
+- Capability report features: `generation-usage`, `character-bibles`,
+  `effect-registry`.
+- New RFCs 0013/0014/0015; specification README + main-spec revision history;
+  standard-audit ledger updated (three gaps closed, one restated).
+
+
 ## 1.1.1
 
 ### Standard profiles

@@ -13,6 +13,7 @@ import {
   allTracks,
   clipEnd,
   findAsset,
+  findBible,
   findClip,
   findGeneration,
   findScene,
@@ -20,8 +21,12 @@ import {
   findTrack,
   generatedAssetId,
   resolveReference,
+  AUDIO_EFFECT_TYPES,
+  VISUAL_EFFECT_TYPES,
+  TRANSITION_TYPES,
   type Asset,
   type Clip,
+  type ExtensionDeclaration,
   type GenerationTask,
   type OutputConfig,
   type Project,
@@ -99,16 +104,6 @@ export const DEFAULT_SUPPORTED_FEATURES: ReadonlySet<string> = new Set([
   'wav',
 ]);
 
-const VISUAL_EFFECT_TYPES = new Set([
-  'blur', 'brightness', 'contrast', 'saturate', 'grayscale', 'sepia', 'invert',
-  'hue-rotate', 'drop-shadow', 'glow', 'grain', 'vignette', 'tint',
-  'color-overlay', 'chroma-key', 'rounded', 'mask', 'filter', 'css',
-]);
-
-const AUDIO_EFFECT_TYPES = new Set([
-  'gain', 'highpass', 'lowpass', 'compressor', 'echo', 'pitch', 'fade', 'normalize', 'ducking',
-]);
-
 const CLIP_PROPERTIES = new Set([
   'opacity', 'x', 'y', 'scale', 'scaleX', 'scaleY', 'rotate', 'blur', 'brightness',
   'contrast', 'saturate', 'grayscale', 'sepia', 'invert', 'hueRotate', 'volume', 'pan',
@@ -181,6 +176,8 @@ class ProjectValidator {
     this.validateTimelineGraph(project);
     this.validateGenerationDirection(project);
     this.validateGenerations(project);
+    this.validateBibles(project);
+    this.validateExtensionRegistry(project);
     this.validateStoryboard(project);
     this.validateOutputs(project);
     this.validateRequirements(project);
@@ -735,11 +732,12 @@ class ProjectValidator {
 
     for (const effect of [...clip.effects, ...clip.audioEffects]) {
       if (!effect.enabled) continue;
-      const known = clip.effects.includes(effect) ? VISUAL_EFFECT_TYPES : AUDIO_EFFECT_TYPES;
-      if (!known.has(effect.type)) {
+      const isVisual = clip.effects.includes(effect);
+      const known = isVisual ? VISUAL_EFFECT_TYPES : AUDIO_EFFECT_TYPES;
+      if (!known.has(effect.type) && !this.declaredTypes(project, isVisual ? 'effect' : 'audio-effect').has(effect.type)) {
         this.warn(
           ErrorCode.RENDER_UNSUPPORTED_FEATURE,
-          `unknown ${clip.effects.includes(effect) ? 'visual' : 'audio'} effect "${effect.type}" on clip "${clip.id}"`,
+          `unknown ${isVisual ? 'visual' : 'audio'} effect "${effect.type}" on clip "${clip.id}"; declare it with <extension kind="${isVisual ? 'effect' : 'audio-effect'}" base="..."> or replace it`,
           { objectId: clip.id },
         );
       }
@@ -901,6 +899,9 @@ class ProjectValidator {
       if ((task.rights?.likeness === 'consented' || task.rights?.voiceCloning === 'consented') && !task.rights?.consent) {
         this.warn(ErrorCode.GENERATION_PROVIDER_ERROR, `generation "${task.id}" declares consented likeness/voice but has no consent reference`, { objectId: task.id });
       }
+      if (task.usage?.cost !== undefined && !task.usage.currency) {
+        this.warn(ErrorCode.VALIDATION_INVALID_VALUE, `generation "${task.id}" records cost without a currency; totals will mix units`, { objectId: task.id });
+      }
     }
 
     const byId = new Map(project.generations.map((task) => [task.id, task]));
@@ -925,6 +926,65 @@ class ProjectValidator {
       state.set(task.id, 2);
     };
     for (const task of project.generations) visit(task);
+  }
+
+  /** Validate the character & style bible library (RFC-0014). */
+  private validateBibles(project: Project): void {
+    for (const bible of project.bibles ?? []) {
+      const context = { objectId: bible.id };
+      if (!bible.description && bible.references.length === 0) {
+        this.bag.info(
+          ErrorCode.VALIDATION_MISSING_REQUIRED,
+          `${bible.kind === 'character' ? 'character' : 'style-guide'} "${bible.id}" has neither a description nor reference sheets; it cannot anchor generation consistency`,
+          context,
+        );
+      }
+      for (const reference of bible.references) {
+        if (!resolveReference(project, reference.ref)) {
+          this.error(
+            ErrorCode.REFERENCE_NOT_FOUND,
+            `${bible.kind} "${bible.id}" references missing "${reference.ref}"`,
+            context,
+          );
+        }
+      }
+    }
+  }
+
+  /**
+   * Validate the extension registry (RFC-0015). Plugin declarations must
+   * desugar onto a built-in behaviour of the same family so that rendering
+   * degrades deterministically instead of silently.
+   */
+  private validateExtensionRegistry(project: Project): void {
+    const families: Record<string, ReadonlySet<string>> = {
+      effect: VISUAL_EFFECT_TYPES,
+      'audio-effect': AUDIO_EFFECT_TYPES,
+      transition: TRANSITION_TYPES,
+    };
+    for (const declaration of Object.values(project.extensions ?? {})) {
+      if (!declaration.kind) continue;
+      const context = { objectId: declaration.name };
+      const known = families[declaration.kind];
+      if (!declaration.base || !known?.has(declaration.base)) {
+        this.error(
+          ErrorCode.EXTENSION_INVALID,
+          `extension "${declaration.name}" kind="${declaration.kind}" must declare base="${
+            [...(known ?? [])].join('|')
+          }"; got ${declaration.base ? `"${declaration.base}"` : 'no base'}`,
+          context,
+        );
+      }
+    }
+  }
+
+  /** Effect/transition types contributed by plugin declarations (RFC-0015). */
+  private declaredTypes(project: Project, kind: ExtensionDeclaration['kind']): Map<string, ExtensionDeclaration> {
+    const result = new Map<string, ExtensionDeclaration>();
+    for (const declaration of Object.values(project.extensions ?? {})) {
+      if (declaration.kind === kind) result.set(declaration.name, declaration);
+    }
+    return result;
   }
 
   private validateStoryboard(project: Project): void {

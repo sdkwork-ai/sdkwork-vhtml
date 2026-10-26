@@ -149,6 +149,36 @@ lanes: [lane('video', 'v', [clip('gen:hero', { start: 0, duration: '5s' })])],
 
 Export auto-materialises or run `vhtml generate`.
 
+### Usage & quota
+
+Tasks may carry a `usage` record (`<usage>`); runs report what they spent, and
+CLI/`materializeGenerations` enforce ceilings (`--max-cost`, `--max-credits`,
+`--max-compute-seconds`) with the stable `GENERATION_QUOTA_EXCEEDED` error.
+See [generation.md §13](../specification/generation.md).
+
+### Character & style bibles
+
+```ts
+characters: [character({ id: 'aria', version: 2, description: 'silver-haired host', negative: 'no glasses' })],
+styleGuides: [styleGuide({ id: 'noir', description: 'high-contrast noir' })],
+generations: [{
+  id: 'shot', kind: 'image', prompt: 'Aria at dawn',
+  inputs: [{ ref: 'character:aria', role: 'character' }, { ref: 'style:noir', role: 'style' }],
+}],
+```
+
+Bibles are the project's versioned consistency library; bumping `version`
+invalidates cached generations. See [generation.md §14](../specification/generation.md).
+
+### Effect / transition plugins
+
+```ts
+extensions: [{ name: 'brandDip', kind: 'transition', base: 'dip', version: '1.0.0', params: { color: '#0b2740' } }],
+```
+
+Declared types render as their built-in `base` with declared default params;
+see [../specification/rfc/RFC-0015-extension-plugin-registry.md](../specification/rfc/RFC-0015-extension-plugin-registry.md).
+
 ## Editing
 
 ```ts

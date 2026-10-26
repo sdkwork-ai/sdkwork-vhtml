@@ -10,11 +10,11 @@
 - [commercial.md](./commercial.md) — 商业交付、权利、审计报告与 C2PA 边界
 - [industry-alignment.md](./industry-alignment.md) — 与 HTML/媒体/AI/交付/权利行业标准对齐
 - [storyboard.md](./storyboard.md) — 分镜模型、自由编辑、与生成/时间线的关系
-- [generation.md](./generation.md) — AI 图片/视频/语音/音乐/音效生成与 Provider 协议；含 §12 主流 vendor 参数映射附录
+- [generation.md](./generation.md) — AI 图片/视频/语音/音乐/音效生成与 Provider 协议；含 §12 vendor 参数映射、§13 用量与配额记账、§14 角色/风格圣经
 - [video-authoring.md](./video-authoring.md) — 代码创作扩展：内嵌创作程序、变速曲线、嵌套时间线、音频闪避
 - [conformance.md](./conformance.md) — 一致性等级与测试
 - [versioning.md](./versioning.md) — 版本、能力协商、弃用与迁移
-- [rfc/](./rfc/) — 关键设计决策记录
+- [rfc/](./rfc/) — 关键设计决策记录（RFC-0001…0015；1.1.2 新增 RFC-0013 生成用量/配额、RFC-0014 角色/风格圣经、RFC-0015 效果/转场插件注册表）
 - [../packages/schema/schemas/vhtml-1.1/](../packages/schema/schemas/vhtml-1.1/) — 机器可读 Schema
 
 ## 设计原则

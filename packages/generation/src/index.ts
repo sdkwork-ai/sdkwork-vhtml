@@ -9,10 +9,11 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runTool, ffmpegPath, probeMedia } from '@sdkwork/vhtml-ffmpeg';
-import { generationKindToAssetKind, resolveReference, type Asset, type GenerationKind, type GenerationTask, type Project } from '@sdkwork/vhtml-core/model';
+import { generationKindToAssetKind, resolveReference, type Asset, type BibleProfile, type GenerationKind, type GenerationQuota, type GenerationTask, type GenerationUsage, type Project } from '@sdkwork/vhtml-core/model';
 import { ErrorCode, VhtmlError } from '@sdkwork/vhtml-core/errors';
 import { formatRate, toNumber } from '@sdkwork/vhtml-core/time';
 import { cacheCandidates, cacheFilePath, DEFAULT_LAYOUT, legacyCacheFilePath } from '@sdkwork/vhtml-project/manifest';
+import { bibleInputsFor } from './vendors.ts';
 
 export interface GenerationRequest {
   task: GenerationTask;
@@ -41,6 +42,18 @@ export interface GeneratedFile {
   metadata?: Record<string, string>;
 }
 
+/**
+ * What a provider run produced. Returning a bare `GeneratedFile[]` stays
+ * valid; providers MAY return this envelope instead to report usage
+ * (RFC-0013) or a provider job id alongside the files.
+ */
+export interface GenerationRun {
+  files: GeneratedFile[];
+  /** Provider-reported consumption; observed facts are merged over it. */
+  usage?: GenerationUsage;
+  providerJobId?: string;
+}
+
 export interface GenerationProviderCapabilities {
   kinds: GenerationKind[];
   models?: string[];
@@ -56,7 +69,7 @@ export interface GenerationProvider {
   id: string;
   kinds: GenerationKind[];
   capabilities?: GenerationProviderCapabilities;
-  generate(request: GenerationRequest): Promise<GeneratedFile[]>;
+  generate(request: GenerationRequest): Promise<GeneratedFile[] | GenerationRun>;
 }
 
 export interface CacheEntry {
@@ -88,6 +101,24 @@ export interface GenerateOptions {
   cachePath?: string;
   /** Output directory relative to the project root; defaults to `generated`. */
   generatedDir?: string;
+  /** Spending ceiling enforced before each provider call (RFC-0013). */
+  quota?: GenerationQuota;
+  /**
+   * Provider list overriding the built-in registry; the first provider whose
+   * `id` matches the task wins. Hosts and tests inject fake providers here.
+   */
+  providers?: GenerationProvider[];
+}
+
+export interface GenerationUsageSummary {
+  cost?: number;
+  currency?: string;
+  credits?: number;
+  tokens?: number;
+  computeSeconds?: number;
+  outputBytes?: number;
+  /** Per-task usage records collected during the run. */
+  tasks: Array<{ taskId: string; usage: GenerationUsage }>;
 }
 
 export interface GenerateResult {
@@ -97,11 +128,15 @@ export interface GenerateResult {
   skipped: string[];
   failed: Array<{ taskId: string; message: string }>;
   issues: string[];
+  /** Observed + provider-reported consumption across the run (RFC-0013). */
+  usage?: GenerationUsageSummary;
 }
 
 function hashText(text: string): string {
   return crypto.createHash('sha256').update(text).digest('hex');
 }
+
+const BIBLE_REF = /^(character|style):(.+)$/;
 
 function hashFile(file: string): string | undefined {
   try {
@@ -477,6 +512,22 @@ function cacheKeyFor(project: Project, task: GenerationTask, provider: string, r
     const file = asset ? path.resolve(root, asset.src) : undefined;
     return [input.ref, file && fs.existsSync(file) ? hashFile(file) : undefined];
   });
+  // Bible inputs participate through their full profile (RFC-0014): bumping a
+  // bible's version or editing its description must invalidate cached outputs.
+  const bibles = bibleInputsFor(task, project).map(([, bible]) => ({
+    kind: bible.kind,
+    id: bible.id,
+    version: bible.version,
+    description: bible.description,
+    negative: bible.negative,
+    references: bible.references.map((reference) => {
+      const asset = project.assets.find(
+        (candidate) => candidate.id === reference.ref || candidate.id === reference.ref.replace(/^(asset|gen):/, ''),
+      );
+      const file = asset ? path.resolve(root, asset.src) : undefined;
+      return [reference.ref, reference.role, file && fs.existsSync(file) ? hashFile(file) : undefined];
+    }),
+  }));
   return hashText(JSON.stringify({
     task: {
       id: task.id,
@@ -484,6 +535,7 @@ function cacheKeyFor(project: Project, task: GenerationTask, provider: string, r
       prompt: task.prompt,
       negativePrompt: task.negativePrompt,
       inputs,
+      bibles,
       constraints: task.constraints,
       params: task.params,
       direction: task.direction,
@@ -496,6 +548,8 @@ function cacheKeyFor(project: Project, task: GenerationTask, provider: string, r
     version: '1.1.0',
   }));
 }
+
+export { bibleInputsFor };
 
 function loadCache(file: string): GenerationCache {
   try {
@@ -598,10 +652,44 @@ export async function materializeGenerations(options: GenerateOptions): Promise<
   const failed: Array<{ taskId: string; message: string }> = [];
   const orderedTasks = orderGenerationTasks(project, options.taskIds);
   const generatedDir = path.join(root, options.generatedDir ?? 'generated');
+  // RFC-0013 usage ledger: declared + observed consumption across this run,
+  // checked against `options.quota` before every provider call.
+  const usageTasks: Array<{ taskId: string; usage: GenerationUsage }> = [];
+  const totals = { cost: 0, credits: 0, tokens: 0, computeSeconds: 0, outputBytes: 0 };
+  let usageCurrency: string | undefined;
+  const accumulate = (taskId: string, usage: GenerationUsage): void => {
+    totals.cost += usage.cost ?? 0;
+    totals.credits += usage.credits ?? 0;
+    totals.tokens += usage.tokens ?? 0;
+    totals.computeSeconds += usage.computeSeconds ?? 0;
+    totals.outputBytes += usage.outputBytes ?? 0;
+    if (usage.currency) usageCurrency ??= usage.currency;
+    usageTasks.push({ taskId, usage });
+  };
+  const assertQuota = (task: GenerationTask): void => {
+    const quota = options.quota;
+    if (!quota) return;
+    const checks: Array<[string, number | undefined, number]> = [
+      ['maxCost', quota.maxCost, totals.cost],
+      ['maxCredits', quota.maxCredits, totals.credits],
+      ['maxTokens', quota.maxTokens, totals.tokens],
+      ['maxComputeSeconds', quota.maxComputeSeconds, totals.computeSeconds],
+    ];
+    for (const [cap, limit, spent] of checks) {
+      if (limit === undefined) continue;
+      if (spent > limit + Number.EPSILON) {
+        throw new VhtmlError(
+          ErrorCode.GENERATION_QUOTA_EXCEEDED,
+          `generation quota ${cap}=${limit} exceeded after ${spent} (task "${task.id}" pending); no further provider calls were made`,
+          { objectId: task.id },
+        );
+      }
+    }
+  };
 
   for (const task of orderedTasks) {
     const providerId = options.provider ?? task.provider ?? 'procedural';
-    const provider = getProvider(providerId);
+    const provider = (options.providers ?? []).find((candidate) => candidate.id === providerId) ?? getProvider(providerId);
     if (!provider) {
       const message = `provider "${providerId}" is not installed`;
       task.status = 'failed';
@@ -660,6 +748,19 @@ export async function materializeGenerations(options: GenerateOptions): Promise<
         continue;
       }
     }
+    assertQuota(task);
+    // A bible reference that cannot resolve would silently vanish from the
+    // provider payload; fail before any provider call instead (RFC-0014).
+    for (const input of task.inputs) {
+      const match = BIBLE_REF.exec(input.ref);
+      if (match && !project.bibles?.some((candidate) => candidate.id === match[2])) {
+        throw new VhtmlError(
+          ErrorCode.REFERENCE_NOT_FOUND,
+          `generation "${task.id}" references missing bible "${input.ref}"`,
+          { objectId: task.id },
+        );
+      }
+    }
 
     const composition = project.composition;
     const durationSeconds = task.constraints.duration
@@ -674,7 +775,8 @@ export async function materializeGenerations(options: GenerateOptions): Promise<
     const seed = task.constraints.seed ?? composition.seed;
     try {
       options.onProgress?.({ taskId: task.id, message: `generating ${task.kind} with ${providerId}` });
-      const files = await provider.generate({
+      const startedAt = performance.now();
+      const run = await provider.generate({
         task,
         project,
         root,
@@ -688,7 +790,27 @@ export async function materializeGenerations(options: GenerateOptions): Promise<
         signal: options.signal,
         onProgress: (message, percent) => options.onProgress?.({ taskId: task.id, message, percent }),
       });
+      const files = Array.isArray(run) ? run : run.files;
+      const providerUsage = Array.isArray(run) ? undefined : run.usage;
+      const providerJobId = Array.isArray(run) ? undefined : run.providerJobId;
+      if (providerJobId && !task.providerJobId) task.providerJobId = providerJobId;
       if (!files.length) throw new VhtmlError(ErrorCode.GENERATION_INVALID_OUTPUT, 'provider produced no files');
+      const computeSeconds = (performance.now() - startedAt) / 1000;
+      const outputBytes = files.reduce((sum, file) => {
+        try {
+          return sum + fs.statSync(file.path).size;
+        } catch {
+          return sum;
+        }
+      }, 0);
+      const usage: GenerationUsage = {
+        ...providerUsage,
+        computeSeconds: providerUsage?.computeSeconds ?? computeSeconds,
+        outputBytes: providerUsage?.outputBytes ?? outputBytes,
+        recordedAt: new Date().toISOString(),
+      };
+      task.usage = { ...(task.usage ?? {}), ...usage };
+      accumulate(task.id, usage);
       let index = 0;
       const generatedAssets: Asset[] = [];
       for (const file of files) {
@@ -747,7 +869,7 @@ export async function materializeGenerations(options: GenerateOptions): Promise<
             promptHash: hashText(task.prompt),
             seed,
             createdAt: new Date().toISOString(),
-            generatorVersion: '1.1.0',
+            generatorVersion: '1.1.2',
             outputHash: hashFile(absoluteFinal),
           },
           metadata: file.metadata,
@@ -785,7 +907,18 @@ export async function materializeGenerations(options: GenerateOptions): Promise<
       }
     }
   }
-  return { project, cachePath, ran, skipped, failed, issues };
+  const usage: GenerationUsageSummary | undefined = usageTasks.length
+    ? {
+        cost: totals.cost || undefined,
+        currency: usageCurrency,
+        credits: totals.credits || undefined,
+        tokens: totals.tokens || undefined,
+        computeSeconds: totals.computeSeconds || undefined,
+        outputBytes: totals.outputBytes || undefined,
+        tasks: usageTasks,
+      }
+    : undefined;
+  return { project, cachePath, ran, skipped, failed, issues, usage };
 }
 
 /** Add generated asset ids so callers can resolve clips that reference gen: ids. */
@@ -883,6 +1016,23 @@ export function resolvedGenerationInputs(
       }
     } else if (resolved.kind === 'scene') {
       descriptor.sceneId = resolved.scene.id;
+    } else if (resolved.kind === 'bible') {
+      descriptor.bibleKind = resolved.bible.kind;
+      descriptor.bibleId = resolved.bible.id;
+      descriptor.bibleVersion = resolved.bible.version;
+      descriptor.description = resolved.bible.description;
+      descriptor.negative = resolved.bible.negative;
+      descriptor.references = resolved.bible.references.map((reference) => {
+        const referenceResolved = resolveReference(project, reference.ref);
+        const asset = referenceResolved?.kind === 'asset' ? referenceResolved.asset : undefined;
+        return {
+          ref: reference.ref,
+          role: reference.role,
+          src: asset?.src,
+          mimeType: asset?.mimeType,
+          hash: asset?.hash,
+        };
+      });
     }
     return descriptor;
   });

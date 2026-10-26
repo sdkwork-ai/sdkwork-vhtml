@@ -586,3 +586,81 @@ MiniMax [Video Generation](https://platform.minimax.io/docs/guides/video-generat
 Sora [Cookbook](https://developers.openai.com/cookbook/examples/sora/sora2_prompting_guide)、Wan [API Reference](https://www.alibabacloud.com/help/en/model-studio/text-to-video-api-reference)、
 Vidu [docs](https://platform.vidu.com/docs/text-to-video)、PixVerse [ComfyUI node docs](https://docs.comfy.org/built-in-nodes/partner-node/video/pixverse/pixverse-text-to-video)、
 Seedance [BytePlus](https://docs.byteplus.com/en/docs/ModelArk/seedance-2-0)、ElevenLabs [voice settings](https://elevenlabs.io/docs/api-reference/voices/settings/update)。
+
+---
+
+## 13. 用量与配额记账（RFC-0013，1.1.2）
+
+生成任务是 Core 对象，其消耗必须可记录、可汇总、可设限（商业交付
+C2/C3 级与智能体批生产的审计需求）。
+
+### 13.1 `<usage>` 记录
+
+`<generate>` 可选子元素 `<usage>`（模型字段 `GenerationTask.usage`）：
+
+| 属性 | 含义 |
+|---|---|
+| `cost` / `currency` | provider 报告的成本与币种；`cost` 无 `currency` 时校验器 warning |
+| `tokens` | 文本/模型 token 消耗 |
+| `credits` | 厂商积分/计费单位 |
+| `compute-seconds` | 该任务 provider 实测墙钟（秒） |
+| `output-bytes` | 输出文件实测总字节数 |
+| `recorded-at` | ISO-8601 记录时间 |
+
+所有数值非负；其他属性按属性名保留（往返稳定）。用量是**记录性数据**：
+不参与缓存键，不改变任务状态机。
+
+### 13.2 运行时记账与配额
+
+`materializeGenerations` 对每次真实 provider 调用记录观测值
+（computeSeconds/outputBytes）；provider 可通过 `GenerationRun` 封套上报
+`usage` 与 `providerJobId`（裸 `GeneratedFile[]` 返回依旧合法；上报字段
+优先，未上报维度保留观测值）。
+
+`GenerateOptions.quota` / CLI `--max-cost`、`--max-credits`、
+`--max-compute-seconds`、`--currency`：每次 provider 调用前检查累计用量，
+超限抛稳定错误码 `GENERATION_QUOTA_EXCEEDED`，后续任务不再调用 provider。
+跨过上限的那次调用可能造成少量溢出，在结果 `usage` 汇总中如实呈现。
+
+### 13.3 导出报告
+
+`vhtml.export-report/1` 的 `provenance.generations[]` 每项携带 `usage`；
+`provenance.usageTotals` 为全项目求和（cost/credits/tokens/computeSeconds/
+outputBytes）。报告不含密钥与完整提示词（§5 隐私边界不变）。
+
+---
+
+## 14. 角色与风格圣经（RFC-0014，1.1.2）
+
+跨镜头一致性（同一角色、同一品牌风格贯穿全片）的权威描述住在项目级
+`<characters>` 库中；规范模型 `BibleProfile`，`kind` 为 `character` 或
+`style`。
+
+```html
+<characters>
+  <character id="mika" version="3" name="Mika">
+    <description>A silver-haired courier in a teal flight jacket.</description>
+    <negative>no glasses, no hat</negative>
+    <reference ref="asset:mika-sheet" role="reference-image" />
+  </character>
+  <style-guide id="noir" version="1">
+    <description>High-contrast noir, rain-slick streets.</description>
+    <reference ref="asset:style-board" role="style" />
+  </style-guide>
+</characters>
+```
+
+- **引用**：`<gen-input ref="character:mika" role="character"/>`、
+  `ref="style:noir" role="style"`。`character:`/`style:` 命名空间解析到
+  同一 bible 库；引用不存在的 bible 在 provider 调用**之前**报
+  `REFERENCE_NOT_FOUND`。
+- **缓存**：bible 完整 profile（含 version 与 reference 文件哈希）参与
+  生成缓存键——**bump version 即失效**该任务缓存，未引用 bible 的任务
+  键不变。
+- **厂商载荷**：`buildVendorPayload` 的 `bibles` 段承载解析后的描述与
+  参考 src/mime；prompt 不被静默改写，由 adapter 决定组合方式。
+- **代码优先**：SDK `character()/styleGuide()/bible()`、
+  `defineVideo({ characters, styleGuides })`；创作程序
+  `vhtml.addCharacter/addStyleGuide`。
+- **审查/权利**：人物形象 bible 与 `review`/`rights`（likeness/consent）
+  组合使用；§5 治理规则不变。

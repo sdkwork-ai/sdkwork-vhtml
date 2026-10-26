@@ -14,12 +14,16 @@
         <generations>
           <generate id="cover" kind="image" provider="procedural">
             <prompt>cinematic teal cover frame, soft light, abstract product stage</prompt>
+            <gen-input ref="character:aria" role="character"></gen-input>
+            <gen-input ref="style:teal-cinematic" role="style"></gen-input>
             <constraints width="1280" height="720" seed="12"></constraints>
             <direction>{&quot;image&quot;:{&quot;style&quot;:&quot;cinematic&quot;,&quot;composition&quot;:&quot;centered&quot;,&quot;background&quot;:&quot;teal gradient&quot;},&quot;shot&quot;:{&quot;framing&quot;:&quot;wide&quot;,&quot;lighting&quot;:&quot;soft rim light&quot;,&quot;mood&quot;:&quot;premium&quot;}}</direction>
           </generate>
           <generate id="shot" kind="video" provider="procedural" model="procedural-gradient-v1">
             <prompt>slow camera push through a teal product stage with floating light</prompt>
             <gen-input ref="gen:cover" role="first-frame"></gen-input>
+            <gen-input ref="character:aria" role="character"></gen-input>
+            <gen-input ref="style:teal-cinematic" role="style"></gen-input>
             <constraints duration="3s" width="1280" height="720" frame-rate="30" seed="12"></constraints>
             <direction>{&quot;shot&quot;:{&quot;camera&quot;:&quot;slow push in&quot;,&quot;framing&quot;:&quot;wide&quot;,&quot;continuity&quot;:&quot;same teal palette&quot;},&quot;video&quot;:{&quot;firstFrame&quot;:&quot;gen:cover&quot;,&quot;loop&quot;:false}}</direction>
             <rights commercial-use ai-disclosure></rights>
@@ -35,6 +39,17 @@
             <direction>{&quot;sfx&quot;:{&quot;category&quot;:&quot;whoosh&quot;,&quot;environment&quot;:&quot;studio&quot;,&quot;intensity&quot;:&quot;medium&quot;,&quot;loop&quot;:false}}</direction>
           </generate>
         </generations>
+        <characters>
+          <character id="aria" version="2" name="Aria">
+            <description>A silver-haired product host in a teal flight jacket; confident, calm.</description>
+            <negative>no glasses, no hat, no logos on the jacket</negative>
+            <reference ref="gen:cover" role="reference-image"></reference>
+          </character>
+          <style-guide id="teal-cinematic" version="1" name="Teal Cinematic">
+            <description>Teal-and-amber cinematic grade, soft rim light, shallow depth, premium minimalism.</description>
+            <negative>no harsh flash, no saturated neon</negative>
+          </style-guide>
+        </characters>
         <storyboard>
           <shot id="shot-cover" order="1" title="Cover frame" generation="cover" duration="0.8s" status="ready" tags="cover,product">
             <description>Teal stage, centered product, soft rim light.</description>
@@ -64,6 +79,7 @@
         <outputs>
           <output id="output-1" format="mp4" timeline="main" width="1280" height="720" frame-rate="30" video-codec="libx264" audio-codec="aac" crf="20" sample-rate="48000" channels="2" path="renders/ai-storyboard.mp4"></output>
         </outputs>
+        <extension name="brandDip" version="1.0.0" kind="transition" base="dip"><params color="#0b2740"></params></extension>
       </project>
     </vhtml>
   </body>

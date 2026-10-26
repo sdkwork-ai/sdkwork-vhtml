@@ -1,6 +1,6 @@
 {
   "name": "@sdkwork/vhtml-project",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "description": "VHTML project layout, vhtml.json manifest, external-file inventory/import/relink, inline-Scene splitting and portable .vhtmlpkg packaging.",
   "type": "module",
   "license": "MIT",

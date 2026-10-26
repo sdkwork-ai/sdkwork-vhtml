@@ -31,6 +31,12 @@
           "assetId": { "type": "string" },
           "taskId": { "type": "string" },
           "sceneId": { "type": "string" },
+          "bibleKind": { "type": "string", "description": "RFC-0014 character|style when the input resolves to a bible profile." },
+          "bibleId": { "type": "string" },
+          "bibleVersion": { "type": "integer" },
+          "description": { "type": "string" },
+          "negative": { "type": "string" },
+          "references": { "type": "array", "items": { "type": "object", "additionalProperties": true } },
           "src": { "type": "string" },
           "mimeType": { "type": "string" },
           "hash": { "type": "string" },
@@ -40,8 +46,39 @@
         }
       }
     },
+    "bibles": {
+      "type": "array",
+      "description": "RFC-0014 character/style bible profiles referenced by this task, resolved with asset sources.",
+      "items": {
+        "type": "object",
+        "required": ["kind", "id"],
+        "additionalProperties": true,
+        "properties": {
+          "kind": { "enum": ["character", "style"] },
+          "id": { "type": "string" },
+          "version": { "type": "integer" },
+          "description": { "type": "string" },
+          "negative": { "type": "string" },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["ref", "role"],
+              "additionalProperties": true,
+              "properties": {
+                "ref": { "type": "string" },
+                "role": { "type": "string" },
+                "src": { "type": "string" },
+                "mimeType": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
     "rights": { "type": "object", "additionalProperties": true },
     "safety": { "type": "object", "additionalProperties": true },
+    "usage": { "type": "object", "additionalProperties": true, "description": "RFC-0013 usage record carried to adapters for billing/telemetry." },
     "seed": { "type": "integer" }
   }
 }

@@ -15,6 +15,7 @@ import {
   type AnimationFill,
   type Asset,
   type AssetKind,
+  type BibleProfile,
   type BlendMode,
   type CaptionClip,
   type Clip,
@@ -24,6 +25,7 @@ import {
   type Crop,
   type Effect,
   type EasingName,
+  type ExtensionDeclaration,
   type GenerationKind,
   type GenerationTask,
   type Marker,
@@ -602,6 +604,8 @@ export interface GenerationSpec {
   };
   params?: GenerationTask['params'];
   direction?: GenerationTask['direction'];
+  /** Declared or provider-reported consumption (RFC-0013). */
+  usage?: GenerationTask['usage'];
   review?: GenerationTask['review'];
   rights?: GenerationTask['rights'];
   safety?: GenerationTask['safety'];
@@ -633,9 +637,72 @@ export function generationTask(spec: GenerationSpec, fps: Rate = rat(30)): Gener
     direction: spec.direction,
     outputs: spec.outputs ?? [],
     status: 'draft',
+    usage: spec.usage,
     review: spec.review,
     rights: spec.rights,
     safety: spec.safety,
+  };
+}
+
+export interface BibleSpec {
+  kind?: BibleProfile['kind'];
+  id: string;
+  /** Advisory revision; bump to invalidate generation caches. */
+  version?: number;
+  name?: string;
+  description?: string;
+  negative?: string;
+  references?: Array<{ ref: string; role?: string }>;
+  metadata?: Record<string, string>;
+}
+
+/** Character bible builder: `character({ id: 'mika', version: 3, ... })`. */
+export function character(spec: Omit<BibleSpec, 'kind'>): BibleProfile {
+  return bible({ ...spec, kind: 'character' });
+}
+
+/** Style-guide bible builder: `styleGuide({ id: 'noir', ... })`. */
+export function styleGuide(spec: Omit<BibleSpec, 'kind'>): BibleProfile {
+  return bible({ ...spec, kind: 'style' });
+}
+
+/** Build a character or style bible profile (RFC-0014). */
+export function bible(spec: BibleSpec): BibleProfile {
+  const kind = spec.kind ?? 'character';
+  return {
+    kind,
+    id: spec.id,
+    version: spec.version,
+    name: spec.name,
+    description: spec.description,
+    negative: spec.negative,
+    references: (spec.references ?? []).map((reference) => ({
+      ref: reference.ref,
+      role: reference.role ?? (kind === 'character' ? 'character' : 'style'),
+    })),
+    metadata: spec.metadata ?? {},
+  };
+}
+
+export interface ExtensionSpec {
+  name: string;
+  version?: string;
+  required?: boolean;
+  /** Plugin declarations declare the family their type belongs to. */
+  kind?: ExtensionDeclaration['kind'];
+  /** Built-in behaviour the declared type renders as. */
+  base?: string;
+  /** Declared default parameters for clips using the type. */
+  params?: Record<string, string | number | boolean>;
+}
+
+/** Extension/plugin declaration builder (RFC-0015). */
+export function extension(spec: ExtensionSpec): ExtensionDeclaration {
+  return {
+    name: spec.name,
+    version: spec.version,
+    required: spec.required ?? false,
+    ...(spec.kind ? { kind: spec.kind, base: spec.base, params: spec.params } : {}),
   };
 }
 

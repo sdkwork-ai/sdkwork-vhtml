@@ -11,9 +11,12 @@ import path from 'node:path';
 import { sampleAnimation, sampleTimeRemap } from '@sdkwork/vhtml-core/animation';
 import {
   clipEnd,
+  declaredBase,
+  declaredParams,
   findAsset,
   findTimeline,
   resolveReference,
+  AUDIO_EFFECT_TYPES,
   type Clip,
   type Project,
   type Timeline,
@@ -437,6 +440,28 @@ export function audioSoloActive(timeline: Timeline): boolean {
   return timeline.tracks.some((track) => track.type === 'audio' && track.solo);
 }
 
+/**
+ * Desugar declared plugin audio effects onto their built-in base behaviour
+ * (RFC-0015). The clip is never mutated; a shallow clone carries the resolved
+ * chain when any effect type is a declaration rather than a built-in.
+ */
+function withDesugaredAudioEffects(clip: Clip, extensions: Project['extensions'] | undefined): Clip {
+  if (!clip.audioEffects.some((effect) => !AUDIO_EFFECT_TYPES.has(effect.type))) return clip;
+  return {
+    ...clip,
+    audioEffects: clip.audioEffects.map((declared: Clip['audioEffects'][number]): Clip['audioEffects'][number] => {
+      if (AUDIO_EFFECT_TYPES.has(declared.type)) return declared;
+      const base = declaredBase(extensions, 'audio-effect', declared.type);
+      if (!base) return declared;
+      return {
+        ...declared,
+        type: base as typeof declared.type,
+        params: { ...(declaredParams(extensions, declared.type) ?? {}), ...declared.params },
+      };
+    }),
+  };
+}
+
 function collectAudioUnits(
   project: Project,
   timeline: Timeline,
@@ -456,7 +481,8 @@ function collectAudioUnits(
         if (clip.kind !== 'audio' && clip.kind !== 'video') continue;
         if ((clip as { muted?: boolean }).muted) continue;
         if (clip.freeze) continue;
-        out.push({ clip, leafTrack: track, chain, windows, ducking: duckingParams(clip) });
+        const effectiveClip = withDesugaredAudioEffects(clip, project.extensions);
+        out.push({ clip: effectiveClip, leafTrack: track, chain, windows, ducking: duckingParams(effectiveClip) });
       }
     } else {
       for (const clip of track.clips) {

@@ -556,15 +556,8 @@
           "type": "string"
         },
         "type": {
-          "enum": [
-            "crossfade",
-            "fade",
-            "wipe",
-            "slide",
-            "zoom",
-            "blur",
-            "dip"
-          ]
+          "description": "Built-in transition type or a declared plugin type (RFC-0015) desugared at render time.",
+          "type": "string"
         },
         "duration": {
           "$ref": "#/$defs/rational"
@@ -1302,6 +1295,39 @@
             }
           }
         },
+        "usage": {
+          "type": "object",
+          "description": "RFC-0013 recorded or declared consumption for this task.",
+          "additionalProperties": true,
+          "properties": {
+            "cost": {
+              "type": "number",
+              "minimum": 0
+            },
+            "currency": {
+              "type": "string"
+            },
+            "tokens": {
+              "type": "number",
+              "minimum": 0
+            },
+            "credits": {
+              "type": "number",
+              "minimum": 0
+            },
+            "computeSeconds": {
+              "type": "number",
+              "minimum": 0
+            },
+            "outputBytes": {
+              "type": "number",
+              "minimum": 0
+            },
+            "recordedAt": {
+              "type": "string"
+            }
+          }
+        },
         "providerJobId": {
           "type": "string"
         },
@@ -1525,6 +1551,13 @@
             "$ref": "#/$defs/generationTask"
           }
         },
+        "bibles": {
+          "type": "array",
+          "description": "RFC-0014 versioned character & style bible library.",
+          "items": {
+            "$ref": "#/$defs/bibleProfile"
+          }
+        },
         "storyboard": {
           "type": "array",
           "items": {
@@ -1569,7 +1602,46 @@
         },
         "extensions": {
           "type": "object",
-          "additionalProperties": true
+          "description": "RFC-0015 extension declarations; plugin declarations contribute effect/audio-effect/transition types.",
+          "additionalProperties": {
+            "type": "object",
+            "required": [
+              "name",
+              "required"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              },
+              "required": {
+                "type": "boolean"
+              },
+              "kind": {
+                "enum": [
+                  "effect",
+                  "audio-effect",
+                  "transition"
+                ]
+              },
+              "base": {
+                "type": "string",
+                "description": "Built-in behaviour the declared type renders as."
+              },
+              "params": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                }
+              }
+            }
+          }
         },
         "requirements": {
           "type": "array",
@@ -1579,6 +1651,68 @@
         },
         "mainTimeline": {
           "type": "string"
+        }
+      }
+    },
+    "bibleProfile": {
+      "type": "object",
+      "description": "RFC-0014 versioned character or style bible.",
+      "required": [
+        "kind",
+        "id",
+        "references"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "kind": {
+          "enum": [
+            "character",
+            "style"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "negative": {
+          "type": "string"
+        },
+        "references": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "ref",
+              "role"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "ref": {
+                "type": "string"
+              },
+              "role": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "metadata": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "source": {
+          "$ref": "#/$defs/sourceLocation"
         }
       }
     },

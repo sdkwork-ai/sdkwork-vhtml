@@ -66,7 +66,7 @@ import {
 } from '@sdkwork/vhtml-project/assets';
 import { packProject, packageInfo, unpackProject } from '@sdkwork/vhtml-project/pack';
 
-const VERSION = '1.1.1';
+const VERSION = '1.1.2';
 
 const BOOLEAN_FLAGS = new Set([
   'json', 'open', 'generate', 'force', 'write', 'no-assets', 'burn-captions',
@@ -792,12 +792,22 @@ async function commandEdit(args: ParsedArgs): Promise<number> {
 async function commandGenerate(args: ParsedArgs): Promise<number> {
   const file = args.positionals[0];
   const loaded = loadProject(file, { checkFiles: false, hydrate: false });
+  const quota: import('@sdkwork/vhtml-core/model').GenerationQuota | undefined =
+    stringFlag(args, 'max-cost') !== undefined || stringFlag(args, 'max-credits') !== undefined || stringFlag(args, 'max-compute-seconds') !== undefined
+      ? {
+          ...(stringFlag(args, 'max-cost') !== undefined ? { maxCost: Number(stringFlag(args, 'max-cost')) } : {}),
+          ...(stringFlag(args, 'max-credits') !== undefined ? { maxCredits: Number(stringFlag(args, 'max-credits')) } : {}),
+          ...(stringFlag(args, 'max-compute-seconds') !== undefined ? { maxComputeSeconds: Number(stringFlag(args, 'max-compute-seconds')) } : {}),
+          ...(stringFlag(args, 'currency') !== undefined ? { currency: stringFlag(args, 'currency') } : {}),
+        }
+      : undefined;
   const result = await materializeGenerations({
     project: loaded.document.project,
     root: loaded.root,
     taskIds: bool(args, 'all') ? undefined : stringFlag(args, 'task') ? [stringFlag(args, 'task')!] : undefined,
     provider: stringFlag(args, 'provider'),
     force: bool(args, 'force'),
+    quota,
     cachePath: cacheFilePath(loaded.root, loaded.layout),
     generatedDir: loaded.layout.generated,
     onProgress: (event) => {
@@ -814,6 +824,7 @@ async function commandGenerate(args: ParsedArgs): Promise<number> {
       skipped: result.skipped,
       failed: result.failed,
       issues: result.issues,
+      usage: result.usage,
       assets: result.project.assets.filter((asset) => asset.generatedBy),
       cache: result.cachePath,
     }, null, 2));
@@ -821,6 +832,15 @@ async function commandGenerate(args: ParsedArgs): Promise<number> {
     console.log(`${color(32, 'generated')} ${result.ran.length}, reused ${result.skipped.length}, failed ${result.failed.length}`);
     for (const asset of result.project.assets.filter((candidate) => candidate.generatedBy)) {
       console.log(`  ${asset.id}  ${asset.kind}  ${asset.src}`);
+    }
+    if (result.usage) {
+      const usage = result.usage;
+      const parts = [
+        usage.cost !== undefined ? `${usage.cost.toFixed(4)} ${usage.currency ?? ''}`.trim() : undefined,
+        usage.credits !== undefined ? `${usage.credits} credits` : undefined,
+        usage.computeSeconds !== undefined ? `${usage.computeSeconds.toFixed(1)}s compute` : undefined,
+      ].filter(Boolean);
+      if (parts.length) console.log(color(90, `  usage: ${parts.join(', ')}`));
     }
   }
   return result.failed.length ? 1 : 0;

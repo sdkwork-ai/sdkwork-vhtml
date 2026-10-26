@@ -294,6 +294,8 @@ export interface DataClip extends ClipBase {
 
 export type Clip = SceneClip | TimelineClip | MediaClip | CaptionClip | DataClip;
 
+const TransitionTypeCanon: readonly TransitionType[] = ['crossfade', 'fade', 'wipe', 'slide', 'zoom', 'blur', 'dip'];
+
 export type TransitionType =
   | 'crossfade'
   | 'fade'
@@ -303,6 +305,42 @@ export type TransitionType =
   | 'blur'
   | 'dip';
 
+/** Built-in visual effect types renderers MUST implement (single source of truth). */
+export const VISUAL_EFFECT_TYPES: ReadonlySet<string> = new Set([
+  'blur', 'brightness', 'contrast', 'saturate', 'grayscale', 'sepia', 'invert',
+  'hue-rotate', 'drop-shadow', 'glow', 'grain', 'vignette', 'tint',
+  'color-overlay', 'chroma-key', 'rounded', 'mask', 'filter', 'css',
+]);
+
+/** Built-in audio effect types mixers MUST implement (single source of truth). */
+export const AUDIO_EFFECT_TYPES: ReadonlySet<string> = new Set([
+  'gain', 'highpass', 'lowpass', 'compressor', 'echo', 'pitch', 'fade', 'normalize', 'ducking',
+]);
+
+/** Built-in transition types renderers MUST implement (single source of truth). */
+export const TRANSITION_TYPES: ReadonlySet<string> = new Set(TransitionTypeCanon);
+
+/**
+ * Resolve the built-in behaviour a declared effect/transition type renders as
+ * (RFC-0015), or `undefined` when the type is not a declared plugin.
+ */
+export function declaredBase(
+  extensions: Project['extensions'] | undefined,
+  kind: ExtensionKind,
+  typeName: string,
+): string | undefined {
+  const declaration = extensions?.[typeName];
+  return declaration?.kind === kind ? declaration.base : undefined;
+}
+
+/** Declared default parameters of a plugin declaration (RFC-0015). */
+export function declaredParams(
+  extensions: Project['extensions'] | undefined,
+  typeName: string,
+): Record<string, string | number | boolean> | undefined {
+  return extensions?.[typeName]?.kind ? extensions[typeName]?.params : undefined;
+}
+
 export type TransitionDirection = 'left' | 'right' | 'up' | 'down';
 
 export interface Transition {
@@ -310,7 +348,11 @@ export interface Transition {
   trackId: string;
   fromClipId: string;
   toClipId: string;
-  type: TransitionType;
+  /**
+   * Built-in transition type, or a declared plugin type (RFC-0015) that the
+   * renderer desugars onto the extension's `base` behaviour.
+   */
+  type: TransitionType | (string & {});
   duration: Rational;
   easing: EasingName;
   direction: TransitionDirection;
@@ -544,6 +586,93 @@ export interface GenerationSafety {
   notes?: string;
 }
 
+/**
+ * Recorded or declared consumption for one generation task (RFC-0013). Cost is
+ * `currency`-denominated; credits and tokens are provider units; compute
+ * seconds and output bytes are observed facts the runtime records on every
+ * provider run. Vendor-only units belong in the index signature.
+ */
+export interface GenerationUsage {
+  /** Provider-reported cost, denominated in `currency`. */
+  cost?: number;
+  currency?: string;
+  /** Billable text/model tokens as reported by the provider. */
+  tokens?: number;
+  /** Provider credits or abstract billing units. */
+  credits?: number;
+  /** Observed provider wall time for this task, in seconds. */
+  computeSeconds?: number;
+  /** Sum of generated output sizes in bytes. */
+  outputBytes?: number;
+  /** ISO-8601 instant the usage was recorded. */
+  recordedAt?: string;
+  [key: string]: unknown;
+}
+
+/**
+ * Hard spending ceiling for one materialisation run (RFC-0013). When the
+ * cumulative usage of already-run tasks plus the next task would exceed a cap,
+ * the run fails with `GENERATION_QUOTA_EXCEEDED` before the provider is called.
+ */
+export interface GenerationQuota {
+  maxCost?: number;
+  maxCredits?: number;
+  maxTokens?: number;
+  maxComputeSeconds?: number;
+  /** Currency `maxCost` is denominated in; mismatching recorded usage counts. */
+  currency?: string;
+}
+
+/** Reference from a bible profile to an asset or generation output. */
+export interface BibleReference {
+  ref: string;
+  role: string;
+}
+
+export type BibleKind = 'character' | 'style';
+
+/**
+ * A versioned character or style bible (RFC-0014): the canonical description a
+ * project keeps for AI consistency across shots. Generation tasks reference a
+ * bible with `ref="character:<id>"` or `ref="style:<id>"`; bumping `version`
+ * invalidates cached generations through the cache key.
+ */
+export interface BibleProfile {
+  kind: BibleKind;
+  id: string;
+  /** Advisory revision; bump to invalidate generation caches. */
+  version?: number;
+  name?: string;
+  /** Canonical positive description of the character or style. */
+  description?: string;
+  /** What must stay out of every depiction; feeds negative prompts. */
+  negative?: string;
+  /** Reference sheets, style boards or generation outputs that anchor it. */
+  references: BibleReference[];
+  metadata?: Record<string, string>;
+  source?: SourceLocation;
+}
+
+export type ExtensionKind = 'effect' | 'audio-effect' | 'transition';
+
+/**
+ * A declared project extension. Plain declarations only carry `name`,
+ * `version` and `required`. Plugin declarations (RFC-0015) additionally
+ * contribute an effect, audio-effect or transition `type` that validators
+ * recognise and renderers desugar onto the built-in `base` behaviour; extra
+ * params are the declared defaults for clips using the type.
+ */
+export interface ExtensionDeclaration {
+  name: string;
+  version?: string;
+  required: boolean;
+  kind?: ExtensionKind;
+  /** Built-in behaviour the declared type renders as. */
+  base?: string;
+  /** Declared default parameters for clips using the type. */
+  params?: Record<string, string | number | boolean>;
+}
+
 export interface GenerationTask {
   id: string;
   kind: GenerationKind;
@@ -558,6 +687,8 @@ export interface GenerationTask {
   direction?: GenerationDirection;
   outputs: GenerationOutputSpec[];
   status: GenerationStatus;
+  /** Recorded or declared consumption for this task (RFC-0013). */
+  usage?: GenerationUsage;
   review?: GenerationReview;
   rights?: GenerationRights;
   safety?: GenerationSafety;
@@ -646,6 +777,8 @@ export interface Project {
   scenes: Scene[];
   timelines: Timeline[];
   generations: GenerationTask[];
+  /** Versioned character & style bible library (RFC-0014). */
+  bibles?: BibleProfile[];
   /** Optional planning layer; timeline remains authoritative for playback. */
   storyboard?: StoryboardShot[];
   outputs: OutputConfig[];
@@ -658,7 +791,8 @@ export interface Project {
   /** Animations that target elements across the whole stage. */
   animations: Animation[];
   metadata: Record<string, string>;
-  extensions?: Record<string, unknown>;
+  /** Declared extensions; plugin declarations register effect/transition types (RFC-0015). */
+  extensions?: Record<string, ExtensionDeclaration>;
   requirements?: string[];
   mainTimeline: string;
 }
@@ -823,6 +957,11 @@ export function findGeneration(project: Project, id: string): GenerationTask | u
   return project.generations.find((task) => task.id === id);
 }
 
+/** Look up a bible profile by id, ignoring its `character`/`style` kind. */
+export function findBible(project: Project, id: string): BibleProfile | undefined {
+  return project.bibles?.find((bible) => bible.id === id);
+}
+
 export function findOutput(project: Project, id: string): OutputConfig | undefined {
   return project.outputs.find((output) => output.id === id);
 }
@@ -835,7 +974,11 @@ export type ResolvedReference =
   | { kind: 'scene'; id: string; scene: Scene }
   | { kind: 'asset'; id: string; asset: Asset }
   | { kind: 'generation'; id: string; task: GenerationTask }
-  | { kind: 'timeline'; id: string; timeline: Timeline };
+  | { kind: 'timeline'; id: string; timeline: Timeline }
+  | { kind: 'bible'; id: string; bible: BibleProfile };
+
+/** Namespaces that address bible profiles (both resolve the same library). */
+export const BIBLE_NAMESPACES = new Set(['character', 'style']);
 
 export function parseReference(ref: string): { namespace?: string; id: string } {
   const index = ref.indexOf(':');
@@ -864,6 +1007,10 @@ export function resolveReference(project: Project, ref: string): ResolvedReferen
   if (parsed.namespace === 'timeline') {
     const timeline = findTimeline(project, parsed.id);
     return timeline ? { kind: 'timeline', id: timeline.id, timeline } : undefined;
+  }
+  if (parsed.namespace && BIBLE_NAMESPACES.has(parsed.namespace)) {
+    const bible = findBible(project, parsed.id);
+    return bible ? { kind: 'bible', id: bible.id, bible } : undefined;
   }
   if (parsed.namespace) return undefined;
 

@@ -2,9 +2,9 @@
 
 **状态**：候选规范（Candidate Specification），参考实现已实现并通过一致性测试  
 **规范版本**：1.1  
-**文档版本**：1.1.1（项目布局 / 外部文件 / WYSIWYG Profiles）  
+**文档版本**：1.1.2（生成用量 / 角色圣经 / 效果插件注册表）  
 **替代**：VHTML 1.0 Draft / Draft 0.2  
-**实现**：`@sdkwork/vhtml` 1.1.1
+**实现**：`@sdkwork/vhtml` 1.1.2
 
 > 本文中的 MUST、MUST NOT、SHOULD、SHOULD NOT、MAY 按 RFC 2119 解释。
 > 规范中的时间、模型字段和元素名称为规范性内容；SDK、CLI 和编辑器交互属于
@@ -801,6 +801,13 @@ Captions → WebVTT sidecar ─────────────────�
 - 1.1.1：增加附录 E 项目目录/外部文件 Profile、附录 F WYSIWYG Profile；
   增加 `vhtml.json`、`.vhtmlpkg`、外部 `<scene src>`、资源清单/导入/重链与
   Studio 直接操纵规范。
+- 1.1.2（全部为增量可选能力，见 RFC-0013/0014/0015）：
+  生成任务 `<usage>` 用量记录、配额上限与 `GENERATION_QUOTA_EXCEEDED`
+  （[generation.md §13](./generation.md)）；`<characters>` 角色/风格圣经库
+  与 `character:`/`style:` 引用命名空间（[generation.md §14](./generation.md)）；
+  `<extension kind/base>` 效果/转场插件注册表与确定性降级求值
+  （[rfc/RFC-0015](./rfc/RFC-0015-extension-plugin-registry.md)）；
+  PNG 序列导出遵循交付 fit/尺寸。
 
 ---
 

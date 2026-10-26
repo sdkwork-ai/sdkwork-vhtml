@@ -530,8 +530,26 @@ export function splitNamespacedParam(key: string): { vendor?: string; param: str
   return { vendor: key.slice(0, index), param: key.slice(index + 1) };
 }
 
-import type { GenerationTask, Project } from '@sdkwork/vhtml-core/model';
+import type { BibleProfile, GenerationTask, Project } from '@sdkwork/vhtml-core/model';
 import { toNumber } from '@sdkwork/vhtml-core/time';
+
+const BIBLE_REF_PATTERN = /^(character|style):(.+)$/;
+
+/**
+ * Resolve the bible profiles a task references through `character:`/`style:`
+ * inputs (RFC-0014). Adapters use this to attach consistency context; the
+ * cache key hashes the same profiles so version bumps invalidate outputs.
+ */
+export function bibleInputsFor(task: GenerationTask, project: Project): Array<[string, BibleProfile]> {
+  const result: Array<[string, BibleProfile]> = [];
+  for (const input of task.inputs) {
+    const match = BIBLE_REF_PATTERN.exec(input.ref);
+    if (!match) continue;
+    const bible = project.bibles?.find((candidate) => candidate.id === match[2]);
+    if (bible) result.push([input.ref, bible]);
+  }
+  return result;
+}
 
 /**
  * Extract a vendor's own parameters from a task: keys namespaced
@@ -592,6 +610,22 @@ export function buildVendorPayload(
       mimeType: resolved?.mimeType,
     };
   });
+  // Character & style bibles travel in their own section (RFC-0014) so
+  // adapters compose them into vendor-specific consistency features instead
+  // of the prompt being mutated behind the author's back.
+  const bibles = project
+    ? bibleInputsFor(task, project).map(([, bible]) => ({
+        kind: bible.kind,
+        id: bible.id,
+        version: bible.version,
+        description: bible.description,
+        negative: bible.negative,
+        references: bible.references.map((reference) => {
+          const resolved = options.resolveSrc && project ? options.resolveSrc(project, reference.ref) : undefined;
+          return { ref: reference.ref, role: reference.role, src: resolved?.src, mimeType: resolved?.mimeType };
+        }),
+      }))
+    : [];
   return {
     schema: 'vhtml.generation/1.1',
     taskId: task.id,
@@ -603,7 +637,9 @@ export function buildVendorPayload(
     direction: task.direction,
     params: vendorParams(task, vendorId || 'vendor'),
     inputs,
+    bibles,
     rights: task.rights,
     safety: task.safety,
+    usage: task.usage,
   };
 }

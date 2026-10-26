@@ -9,6 +9,7 @@
 import {
   type Animation,
   type Asset,
+  type BibleProfile,
   type Clip,
   type Effect,
   type GenerationTask,
@@ -247,6 +248,12 @@ class Serializer {
       this.close('</generations>');
     }
 
+    if (project.bibles?.length) {
+      this.open('<characters>');
+      for (const bible of project.bibles) this.writeBible(bible);
+      this.close('</characters>');
+    }
+
     if (project.storyboard?.length) {
       this.open('<storyboard>');
       project.storyboard.forEach((shot, index) => this.writeStoryboardShot(shot, index));
@@ -283,17 +290,41 @@ class Serializer {
       this.close('</requirements>');
     }
     if (project.extensions) {
-      for (const [name, value] of Object.entries(project.extensions)) {
-        const extension = value as { version?: string; required?: boolean };
+      for (const [name, declaration] of Object.entries(project.extensions)) {
+        const params = declaration.params
+          ? Object.entries(declaration.params)
+            .map(([paramName, value]) => attr(paramName, String(value)))
+            .join('')
+          : '';
         this.line(
           `<extension${attrs([
             ['name', name],
-            ['version', extension.version],
-            ['required', extension.required ? true : undefined],
-          ])}></extension>`,
+            ['version', declaration.version],
+            ['required', declaration.required ? true : undefined],
+            ['kind', declaration.kind],
+            ['base', declaration.base],
+          ])}>${params ? `<params${params}></params>` : ''}</extension>`,
         );
       }
     }
+  }
+
+  /** Serialize a character or style bible (RFC-0014). */
+  private writeBible(bible: BibleProfile): void {
+    const tag = bible.kind === 'character' ? 'character' : 'style-guide';
+    this.open(
+      `<${tag}${attrs([
+        ['id', bible.id],
+        ['version', bible.version],
+        ['name', bible.name],
+      ])}>`,
+    );
+    if (bible.description) this.line(`<description>${escapeHtml(bible.description)}</description>`);
+    if (bible.negative) this.line(`<negative>${escapeHtml(bible.negative)}</negative>`);
+    for (const reference of bible.references) {
+      this.line(`<reference${attrs([['ref', reference.ref], ['role', reference.role]])}></reference>`);
+    }
+    this.close(`</${tag}>`);
   }
 
   private writeAsset(asset: Asset): void {
@@ -432,6 +463,23 @@ class Serializer {
           ['mime-type', output.mimeType],
           ['role', output.role],
         ])}></gen-output>`,
+      );
+    }
+    if (task.usage) {
+      const usage = task.usage;
+      const extras = Object.entries(usage)
+        .filter(([key, value]) => !['cost', 'currency', 'tokens', 'credits', 'computeSeconds', 'outputBytes', 'recordedAt'].includes(key) && typeof value !== 'object')
+        .map(([key, value]) => attr(key, String(value)));
+      this.line(
+        `<usage${attrs([
+          ['cost', usage.cost],
+          ['currency', usage.currency],
+          ['tokens', usage.tokens],
+          ['credits', usage.credits],
+          ['compute-seconds', usage.computeSeconds],
+          ['output-bytes', usage.outputBytes],
+          ['recorded-at', usage.recordedAt],
+        ])}${extras.join('')}></usage>`,
       );
     }
     this.close('</generate>');

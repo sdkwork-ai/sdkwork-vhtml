@@ -655,7 +655,7 @@ const ready = (async () => {
 })();
 
 const hostApi = {
-  version: '1.1.1',
+  version: '1.1.2',
   mode: data.mode,
   ready,
   seek,
@@ -678,7 +678,7 @@ const hostApi = {
 };
 
 const authoringApi = {
-  version: '1.1.1',
+  version: '1.1.2',
   mode: data.mode,
   time: timeApi,
   ready,
