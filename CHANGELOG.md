@@ -1,5 +1,49 @@
 # Changelog
 
+## 1.1.3
+
+### Deterministic frame cache (RFC-0016)
+
+- Content-addressed PNG frame cache at `.vhtml/cache/frames/<key>/` keyed by
+  canonical project serialization + sampling range/fps + asset file
+  fingerprints (size+mtime) + renderer fingerprint.
+- `exportProject({ frameCacheDir })` reads cached frames and writes misses;
+  fully-cached runs skip Chromium entirely. `ExportResult.frameCache` reports
+  `{ dir, key, hits, misses }`.
+- `vhtml export --frame-cache` / `--frame-cache-refresh`; `--batch` enables
+  the cache by default (`--no-frame-cache` to opt out) so every preset after
+  the first is a pure cache hit — one Chromium sampling pass serves all
+  delivery presets.
+- mtime-bounded prune keeps the newest 8 keys (`VHTML_FRAME_CACHE_KEEP`),
+  enumerating exact key directories inside the cache root (no wildcard
+  deletion).
+
+### Explicit audio downmix policy (RFC-0017)
+
+- `OutputConfig.downmix: 'mono' | 'stereo'` (`<output downmix="mono">`) with
+  parser/serializer/schema/validator support; SDK `OutputSpec.downmix` and
+  `ExportOptions.downmix`; CLI `vhtml export --downmix mono|stereo`.
+- `mono` folds L/R to one channel at the mixer (pan applied before the fold);
+  explicit policies export without a downmix issue, implicit >2ch folds keep
+  a policy-pointing issue. Channel layouts beyond stereo remain an open gap.
+
+### Storyboard review & approval history (RFC-0018)
+
+- `StoryboardShot.review` + append-only `reviewHistory`
+  (`<shot><review status reviewer reviewed-at>` children; the last element is
+  the current record).
+- `storyboard.review` edit op archives the previous review and keeps shot
+  status honest (approved → `approved`; changes-requested/rejected →
+  `boarded`). Review-status set hoisted to Core `GENERATION_REVIEW_STATUSES`
+  shared with generation tasks.
+- storyboard.md §9; schema `generationReview` def + shot `review`/
+  `reviewHistory`.
+
+### Capability report
+
+- New features: `frame-cache`, `audio-downmix-policy`, `storyboard-review`.
+
+
 ## 1.1.2
 
 ### Generation usage & quota (RFC-0013)

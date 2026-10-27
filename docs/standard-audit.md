@@ -1,4 +1,4 @@
-# Standard Audit — VHTML 1.1.2
+# Standard Audit — VHTML 1.1.3
 
 This audit records concrete gaps found in the current standard/implementation and
 the changes made in this round. It is intentionally not a claim of perfection:
@@ -52,6 +52,9 @@ controlled upgrade path.
 | AI character memory (1.1.2) | Cross-shot consistency relied on reference assets/prompts repeated per task | `<characters>` library of versioned `BibleProfile` (character/style-guide) with description/negative/reference anchors; `character:`/`style:` reference namespaces resolved against the library (missing bible fails before any provider call); full bible profile participates in the generation cache key (version bump invalidates); `bibles` section in `buildVendorPayload` — prompts are never silently rewritten; SDK `character()/styleGuide()/bible()` + `defineVideo({characters, styleGuides})` + program `vhtml.addCharacter/addStyleGuide`; RFC-0014, generation.md §14 |
 | Effect/transition plugin registry (1.1.2) | Effect/transition types were hard-coded; third-party packs had no verifiable contract | `<extension kind="effect|audio-effect|transition" base="<builtin>">` plugin declarations with declared default `<params>`; validator accepts declared types (unknown ones still warn) and rejects declarations whose `base` is not a built-in of the same family (`EXTENSION_INVALID`); renderer/mixer desugar declared types onto their base deterministically (clip params override defaults); built-in type sets hoisted to Core Model constants (`VISUAL_EFFECT_TYPES`/`AUDIO_EFFECT_TYPES`/`TRANSITION_TYPES`) as the single source of truth; RFC-0015 |
 | PNG-sequence delivery fit (1.1.2) | PNG path wrote composition-size frames and emitted an explicit issue | Export resamples the frame sequence to the delivery size/fit with the same Lanczos cover/contain/stretch filter used by video encoders; integration test verifies 160×90 contain output and no fit issue |
+| Incremental render — frame cache (1.1.3) | Every export re-opened Chromium and re-sampled identical projects; multi-preset batch sampled the timeline once per preset | Deterministic read-through frame cache (RFC-0016) at `.vhtml/cache/frames/<key>` keyed by canonical project serialization + range/fps + asset fingerprints + renderer fingerprint; all-cached runs skip Chromium entirely; `--batch` shares one sampling pass across presets (`--no-frame-cache` to disable), `--frame-cache`/`--frame-cache-refresh` for single exports; mtime-bounded prune (keep newest 8, enumerated exact key dirs inside the cache root); ExportResult/CLI report hits/misses |
+| Explicit audio downmix policy (1.1.3) | >2-channel requests were folded to stereo as a silent side effect | `OutputConfig.downmix: mono|stereo` (RFC-0017) through parser/serializer/schema/SDK OutputSpec/ExportOptions/CLI `--downmix`; explicit mono folds L/R at the mixer and exports without a downmix issue, implicit folds keep a policy-pointing issue; >2ch channel layout/placement remains open (see gaps) |
+| Storyboard review & approval history (1.1.3) | Shots had only a status enum; who approved/reviewed and why was unrecorded | `StoryboardShot.review` + append-only `reviewHistory` (RFC-0018) through parser/serializer/schema; `<review>` children with last-is-current serialization contract; `storyboard.review` edit op archives the previous record and keeps shot status honest (approved → approved, changes-requested/rejected → boarded); review-status set hoisted to Core `GENERATION_REVIEW_STATUSES` shared with generation tasks |
 
 ## Remaining high-priority gaps
 
@@ -59,13 +62,11 @@ controlled upgrade path.
 |---|---|---|
 | HDR / WCG / alpha delivery | `display-p3` is declared but encoded as BT.709; no alpha WebM/ProRes | Explicit color pipeline, alpha-capable codecs, capability flags |
 | Automatic reframe / safe-area layout | Profiles expose safe areas but do not move content | Responsive scene variants or declarative anchors; never mutate authored HTML implicitly |
-| Audio ducking / sidechain / >2ch | Podcast/interview mixes need it; encoder downmixes silently | Sidechain graph, channel layout, explicit downmix policy (ducking ≤2ch shipped in RFC-0010; >2ch policy still open) |
-| Collaborative locking and history | Remote creation is single-writer | Project lock, conflict detection, revision history/CRDT boundary |
-| Incremental render and proxies | Full re-render is expensive for long videos | Frame cache keyed by model hash, proxy media, render manifest |
-| Golden conformance | Only structural/temporal tests are broad | Golden frames/audio for every transition/effect under pinned Chrome |
+| Audio channel layout >2ch | RFC-0017 froze the downmix policy (mono/stereo); 5.1/7.1 placement, per-channel routing and passthrough are still unsupported | Per-clip channel placement model, AAC/Opus channel mapping, explicit downmix matrix |
+| Collaborative locking and history | Remote creation is single-writer; RFC-0018 gives shots an approval chain but not field-level revision snapshots or comments | Project lock, conflict detection, revision history/CRDT boundary; per-shot field revisions and comments as a follow-up profile |
+| Golden conformance | Only structural/temporal tests are broad | Golden frames/audio for every transition/effect under pinned Chrome (the RFC-0016 frame cache is the recording substrate) |
 | AI content credentials | Rights/disclosure are declarations, not cryptographic proof | C2PA/content credentials, watermark adapters, publish-side checks |
 | AI evaluation | No quality benchmark per model/prompt | Prompt suites, shot-level scoring, human review integration |
-| Storyboard versioning | Shot history is project-level undo only | Per-shot revisions, comments and approval history |
 | Custom-effect sandboxed rendering | RFC-0015 desugars declared types onto built-in bases; genuinely custom render behavior is out of scope | Future proposal: sandboxed effect hooks with deterministic contracts and capability negotiation |
 
 ## What "perfect" means here

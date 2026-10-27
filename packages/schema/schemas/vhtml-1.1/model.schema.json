@@ -1058,8 +1058,45 @@
         "notes": {
           "type": "string"
         },
+        "review": {
+          "$ref": "#/$defs/generationReview",
+          "description": "RFC-0018 current review record for this shot."
+        },
+        "reviewHistory": {
+          "type": "array",
+          "description": "RFC-0018 prior review records, oldest first.",
+          "items": {
+            "$ref": "#/$defs/generationReview"
+          }
+        },
         "source": {
           "$ref": "#/$defs/sourceLocation"
+        }
+      }
+    },
+    "generationReview": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "status": {
+          "enum": [
+            "pending",
+            "approved",
+            "rejected",
+            "changes-requested"
+          ]
+        },
+        "reviewer": {
+          "type": "string"
+        },
+        "notes": {
+          "type": "string"
+        },
+        "reviewedAt": {
+          "type": "string"
         }
       }
     },
@@ -1425,6 +1462,13 @@
             "stretch",
             "contain",
             "cover"
+          ]
+        },
+        "downmix": {
+          "description": "RFC-0017 explicit audio downmix policy (default stereo).",
+          "enum": [
+            "mono",
+            "stereo"
           ]
         },
         "rangeStart": {

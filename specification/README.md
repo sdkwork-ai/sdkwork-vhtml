@@ -14,7 +14,7 @@
 - [video-authoring.md](./video-authoring.md) — 代码创作扩展：内嵌创作程序、变速曲线、嵌套时间线、音频闪避
 - [conformance.md](./conformance.md) — 一致性等级与测试
 - [versioning.md](./versioning.md) — 版本、能力协商、弃用与迁移
-- [rfc/](./rfc/) — 关键设计决策记录（RFC-0001…0015；1.1.2 新增 RFC-0013 生成用量/配额、RFC-0014 角色/风格圣经、RFC-0015 效果/转场插件注册表）
+- [rfc/](./rfc/) — 关键设计决策记录（RFC-0001…0018；1.1.2 新增用量/配额、角色/风格圣经、效果插件注册表；1.1.3 新增确定性帧缓存、显式降混策略、分镜审查历史）
 - [../packages/schema/schemas/vhtml-1.1/](../packages/schema/schemas/vhtml-1.1/) — 机器可读 Schema
 
 ## 设计原则

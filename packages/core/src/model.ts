@@ -64,6 +64,14 @@ export type TimingMode = 'clip' | 'project';
 export type OutputFormat = 'mp4' | 'webm' | 'gif' | 'png-sequence' | 'wav' | 'mp3';
 export type OutputFitMode = 'stretch' | 'contain' | 'cover';
 
+/**
+ * RFC-0017 explicit audio downmix policy. `mono` folds the mix to one
+ * channel; the default `stereo` keeps the mixer's two-channel profile (an
+ * implicit fold from >2 declared channels is reported as an export issue,
+ * never silent).
+ */
+export type DownmixPolicy = 'mono' | 'stereo';
+
 export interface LicenseInfo {
   name?: string;
   url?: string;
@@ -562,6 +570,9 @@ export interface GenerationDirection {
 
 export type GenerationReviewStatus = 'pending' | 'approved' | 'rejected' | 'changes-requested';
 
+/** Valid review statuses (single source of truth for parser/validator/edits). */
+export const GENERATION_REVIEW_STATUSES: ReadonlySet<GenerationReviewStatus> = new Set(['pending', 'approved', 'rejected', 'changes-requested']);
+
 export interface GenerationReview {
   status: GenerationReviewStatus;
   reviewer?: string;
@@ -733,6 +744,10 @@ export interface StoryboardShot {
   direction?: GenerationDirection;
   tags?: string[];
   notes?: string;
+  /** Current review record (RFC-0018); `storyboard.review` maintains it. */
+  review?: GenerationReview;
+  /** Prior review records, oldest first (RFC-0018 approval history). */
+  reviewHistory?: GenerationReview[];
   source?: SourceLocation;
 }
 
@@ -745,6 +760,8 @@ export interface OutputConfig {
   frameRate: Rate;
   /** How composition frames fit a different delivery aspect ratio. */
   fit?: OutputFitMode;
+  /** RFC-0017 explicit audio downmix policy (default stereo). */
+  downmix?: DownmixPolicy;
   /** Optional sub-range of the timeline; defaults to the whole timeline. */
   rangeStart?: Rational;
   rangeDuration?: Rational;

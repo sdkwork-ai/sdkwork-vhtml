@@ -31,6 +31,7 @@ import {
 import { ErrorCode, VhtmlError } from '@sdkwork/vhtml-core/errors';
 import { VhtmlRenderer } from '@sdkwork/vhtml-runtime/renderer';
 import { ffmpegPath, probeMedia } from '@sdkwork/vhtml-ffmpeg';
+import { countCachedFrames, frameCacheKey, openFrameCache, pruneFrameCache, type FrameCache } from './frame-cache.ts';
 import {
   hasAudibleClips,
   mixSoundtrack,
@@ -69,6 +70,8 @@ export interface ExportOptions {
   audioBitrate?: string;
   sampleRate?: number;
   channels?: number;
+  /** RFC-0017 explicit downmix policy: `mono` folds the mix to one channel. */
+  downmix?: 'mono' | 'stereo';
   masterGain?: number;
   normalizeAudio?: boolean;
   loudness?: number;
@@ -80,6 +83,15 @@ export interface ExportOptions {
   chaptersPath?: string;
   reportPath?: string;
   keepTemp?: boolean;
+  /**
+   * Deterministic frame cache directory (RFC-0016). When set, sampled
+   * composition frames are read from / written under
+   * `<frameCacheDir>/<key>/`; unchanged projects skip Chromium entirely and
+   * multi-preset batch runs share one sampling pass.
+   */
+  frameCacheDir?: string;
+  /** Ignore cached frames (write-through refresh). */
+  frameCacheRefresh?: boolean;
   executablePath?: string;
   headless?: boolean;
   sandbox?: boolean;
@@ -105,6 +117,8 @@ export interface ExportResult {
   audioPath?: string;
   captionsPath?: string;
   reportPath?: string;
+  /** RFC-0016 frame-cache statistics when the cache was enabled. */
+  frameCache?: { dir: string; hits: number; misses: number; key: string };
   probe?: {
     durationSeconds: number;
     videoCodec?: string;
@@ -427,15 +441,49 @@ export async function exportProject(options: ExportOptions): Promise<ExportResul
   const issues: string[] = [];
   const sampleRate = options.sampleRate ?? output.sampleRate;
   const requestedChannels = options.channels ?? output.channels;
-  const channels = Math.min(2, requestedChannels);
-  if (requestedChannels > 2) {
-    issues.push(`audio channels ${requestedChannels} are downmixed to stereo in this encoder profile`);
+  // RFC-0017: the downmix policy is explicit. `mono` folds to one channel;
+  // anything above stereo still requires the mixer's 1/2-channel profile, so
+  // an implicit fold is reported as an issue instead of staying silent.
+  const downmix = options.downmix ?? output.downmix;
+  const channels = downmix === 'mono' ? 1 : Math.min(2, requestedChannels);
+  if (requestedChannels > 2 && channels === 2) {
+    issues.push(`audio channels ${requestedChannels} are downmixed to stereo in this encoder profile; set downmix explicitly for a stable policy`);
+  }
+  if (requestedChannels > 2 && channels === 1) {
+    issues.push(`audio channels ${requestedChannels} are downmixed to mono per the explicit downmix policy`);
   }
   if (output.colorSpace === 'display-p3') {
     issues.push('Display-P3 output is tagged as BT.709 by the current FFmpeg profile; HDR/WCG delivery needs a dedicated pipeline');
   }
   let audioPath: string | undefined;
   let captionsPath: string | undefined;
+  // RFC-0016 deterministic frame cache: one key per (project, range, fps,
+  // renderer fingerprint). Batch runs share the directory, so every preset
+  // after the first reuses the sampled frames.
+  const frameCache = options.frameCacheDir
+    ? openFrameCache(
+        options.frameCacheDir,
+        frameCacheKey(options.project, {
+          root: options.root,
+          timelineId: output.timeline,
+          fps,
+          rangeStart,
+          rangeDuration,
+          renderer: {
+            executablePath: options.executablePath,
+            headless: options.headless,
+            sandbox: options.sandbox,
+            allowNetwork: options.allowNetwork,
+          },
+        }),
+        { refresh: options.frameCacheRefresh },
+      )
+    : undefined;
+  const cachedFrames = frameCache ? countCachedFrames(frameCache, totalFrames) : 0;
+  const cacheStats = (): ExportResult['frameCache'] =>
+    frameCache
+      ? { dir: options.frameCacheDir!, key: path.basename(frameCache.dir), hits: frameCache.hits, misses: frameCache.misses }
+      : undefined;
 
   try {
     report('prepare', 0, totalFrames, 'validating output');
@@ -505,29 +553,41 @@ export async function exportProject(options: ExportOptions): Promise<ExportResul
     }
 
     if (format === 'png-sequence') {
-      const renderer = new VhtmlRenderer({
-        project: options.project,
-        root: options.root,
-        timelineId: output.timeline,
-        executablePath: options.executablePath,
-        headless: options.headless,
-        sandbox: options.sandbox,
-        allowNetwork: options.allowNetwork,
-        timeoutMs: options.timeoutMs,
-      });
+      const needsRenderer = frameCache ? cachedFrames < totalFrames : true;
+      const renderer = needsRenderer
+        ? new VhtmlRenderer({
+            project: options.project,
+            root: options.root,
+            timelineId: output.timeline,
+            executablePath: options.executablePath,
+            headless: options.headless,
+            sandbox: options.sandbox,
+            allowNetwork: options.allowNetwork,
+            timeoutMs: options.timeoutMs,
+          })
+        : undefined;
       try {
-        await renderer.open();
+        if (renderer) await renderer.open();
+        if (frameCache) {
+          report('render', 0, totalFrames, `frame cache: ${cachedFrames}/${totalFrames} cached`);
+        }
         for (let frame = 0; frame < totalFrames; frame += 1) {
           assertNotAborted(options.signal);
-          const time = add(rangeStart, frameTime(frame, fps));
-          const captured = await renderer.sampleTime(toNumber(time));
-          issues.push(...captured.issues);
           const file = path.join(target.path, `frame-${String(frame).padStart(6, '0')}.png`);
-          fs.writeFileSync(file, captured.png);
+          const cached = frameCache?.read(frame);
+          if (cached) {
+            fs.writeFileSync(file, cached);
+          } else {
+            const time = add(rangeStart, frameTime(frame, fps));
+            const captured = await renderer!.sampleTime(toNumber(time));
+            issues.push(...captured.issues);
+            frameCache?.write(frame, captured.png);
+            fs.writeFileSync(file, captured.png);
+          }
           report('render', frame + 1, totalFrames, `frame ${frame + 1}/${totalFrames}`);
         }
       } finally {
-        await renderer.close();
+        if (renderer) await renderer.close();
       }
       // Delivery fit/dimensions apply to PNG sequences too: resample the
       // composition-sized frames with the same Lanczos cover/contain/stretch
@@ -579,6 +639,7 @@ export async function exportProject(options: ExportOptions): Promise<ExportResul
         issues,
         audioPath,
         captionsPath,
+        frameCache: cacheStats(),
       };
     }
 
@@ -595,31 +656,42 @@ export async function exportProject(options: ExportOptions): Promise<ExportResul
     }
     const encoderArgs = buildEncoderArgs(options, target.path, fps, width, height, audioPath);
     const encoder = spawnEncoder(encoderArgs, options.signal);
-    const renderer = new VhtmlRenderer({
-      project: options.project,
-      root: options.root,
-      timelineId: output.timeline,
-      executablePath: options.executablePath,
-      headless: options.headless,
-      sandbox: options.sandbox,
-      allowNetwork: options.allowNetwork,
-      timeoutMs: options.timeoutMs,
-    });
+    const needsRenderer = frameCache ? cachedFrames < totalFrames : true;
+    const renderer = needsRenderer
+      ? new VhtmlRenderer({
+          project: options.project,
+          root: options.root,
+          timelineId: output.timeline,
+          executablePath: options.executablePath,
+          headless: options.headless,
+          sandbox: options.sandbox,
+          allowNetwork: options.allowNetwork,
+          timeoutMs: options.timeoutMs,
+        })
+      : undefined;
     try {
-      report('render', 0, totalFrames, 'opening Chromium');
-      await renderer.open();
+      report('render', 0, totalFrames, renderer ? 'opening Chromium' : 'all frames served from the frame cache');
+      if (renderer) await renderer.open();
       for (let frame = 0; frame < totalFrames; frame += 1) {
         assertNotAborted(options.signal);
-        const time = add(rangeStart, frameTime(frame, fps));
-        const captured = await renderer.sampleTime(toNumber(time));
-        issues.push(...captured.issues);
-        await encoder.write(captured.png);
+        const cached = frameCache?.read(frame);
+        let png: Buffer;
+        if (cached) {
+          png = cached;
+        } else {
+          const time = add(rangeStart, frameTime(frame, fps));
+          const captured = await renderer!.sampleTime(toNumber(time));
+          issues.push(...captured.issues);
+          frameCache?.write(frame, captured.png);
+          png = captured.png;
+        }
+        await encoder.write(png);
         report('render', frame + 1, totalFrames, `frame ${frame + 1}/${totalFrames}`);
       }
       report('encode', totalFrames, totalFrames, 'finalising');
       await encoder.finish();
     } finally {
-      await renderer.close();
+      if (renderer) await renderer.close();
       if (!encoder.process.killed && encoder.process.exitCode === null) {
         try {
           encoder.process.kill('SIGKILL');
@@ -631,6 +703,7 @@ export async function exportProject(options: ExportOptions): Promise<ExportResul
     if (!fs.existsSync(target.path) || fs.statSync(target.path).size === 0) {
       throw new VhtmlError(ErrorCode.EXPORT_ENCODER_FAILED, `encoder produced no output for ${target.path}`);
     }
+    if (frameCache && frameCache.misses > 0) pruneFrameCache(options.frameCacheDir!);
     const stat = fs.statSync(target.path);
     const probe = await probeMedia(target.path).catch(() => undefined);
     const result: ExportResult = {
@@ -647,6 +720,7 @@ export async function exportProject(options: ExportOptions): Promise<ExportResul
       sha256: fs.statSync(target.path).isFile() ? await sha256File(target.path) : undefined,
       audioPath: options.keepTemp ? audioPath : undefined,
       captionsPath,
+      frameCache: cacheStats(),
       probe: probe
         ? {
             durationSeconds: probe.durationSeconds,

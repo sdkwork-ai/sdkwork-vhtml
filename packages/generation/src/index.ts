@@ -869,7 +869,7 @@ export async function materializeGenerations(options: GenerateOptions): Promise<
             promptHash: hashText(task.prompt),
             seed,
             createdAt: new Date().toISOString(),
-            generatorVersion: '1.1.2',
+            generatorVersion: '1.1.3',
             outputHash: hashFile(absoluteFinal),
           },
           metadata: file.metadata,

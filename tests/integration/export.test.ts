@@ -119,3 +119,81 @@ test('PNG sequence honors delivery fit and dimensions', { skip: !toolsAvailable(
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('frame cache serves the second export entirely from cache (RFC-0016)', { skip: !toolsAvailable() && 'Chrome/FFmpeg not available', timeout: 240_000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vhtml-fc-'));
+  try {
+    const source = `<project id="fc" version="1.1"><settings><composition width="320" height="180" frame-rate="30/1" duration="1s" /></settings>
+<scenes><scene id="s" duration="1s"><div style="position:absolute;inset:0;background:#0b1020;color:#6ee7ff;font:700 24px system-ui">FC</div></scene></scenes>
+<timelines><timeline id="main" duration="1s"><lane id="v" type="video"><clip id="c" ref="s" start="0s" duration="1s" /></lane></timeline></timelines>
+<output id="mp4" format="mp4" width="320" height="180" frame-rate="30/1" /></project>`;
+    const parsed = parseVhtml(source, { file: path.join(root, 'project.vhtml'), root });
+    const output = parsed.document.project.outputs[0]!;
+    const cacheDir = path.join(root, '.vhtml', 'cache', 'frames');
+    const first = await exportProject({
+      project: parsed.document.project,
+      root,
+      output,
+      outputPath: path.join(root, 'first.mp4'),
+      rangeDuration: { num: 1, den: 1 },
+      frameCacheDir: cacheDir,
+      preset: 'ultrafast',
+      crf: 30,
+      timeoutMs: 60_000,
+    });
+    assert.equal(first.frameCache?.misses, first.frames, 'first run samples every frame');
+    assert.equal(first.frameCache?.hits, 0);
+    const second = await exportProject({
+      project: parsed.document.project,
+      root,
+      output,
+      outputPath: path.join(root, 'second.mp4'),
+      rangeDuration: { num: 1, den: 1 },
+      frameCacheDir: cacheDir,
+      preset: 'ultrafast',
+      crf: 30,
+      timeoutMs: 60_000,
+    });
+    assert.equal(second.frameCache?.hits, second.frames, 'second run reads every frame from cache');
+    assert.equal(second.frameCache?.misses, 0, 'no Chromium sampling needed');
+    assert.ok(second.elapsedMs < first.elapsedMs + 500, 'cached run is not slower');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('mono downmix policy exports a single-channel mix (RFC-0017)', { skip: !toolsAvailable() && 'FFmpeg not available', timeout: 120_000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vhtml-mono-'));
+  try {
+    const wav = path.join(root, 'tone.wav');
+    const generated = spawnSync(ffmpegPath(), [
+      '-y', '-hide_banner', '-loglevel', 'error',
+      '-f', 'lavfi', '-i', 'sine=frequency=330:duration=1',
+      '-ar', '48000', '-ac', '2', '-c:a', 'pcm_s16le', wav,
+    ]);
+    assert.equal(generated.status, 0, generated.stderr?.toString());
+    const source = `<project id="mono-out" version="1.1"><settings><composition width="160" height="90" frame-rate="30/1" duration="1s" sample-rate="48000" channels="2" /></settings>
+<assets><asset id="tone" type="audio" src="./tone.wav" duration="1s" /></assets>
+<timelines><timeline id="main" duration="1s"><lane id="a" type="audio"><clip id="m" ref="tone" start="0s" duration="1s" /></lane></timeline></timelines>
+<output id="mono" format="wav" downmix="mono" sample-rate="48000" channels="1" path="renders/mono.wav" /></project>`;
+    const parsed = parseVhtml(source, { file: path.join(root, 'project.vhtml'), root });
+    const output = parsed.document.project.outputs[0]!;
+    assert.equal(output.downmix, 'mono');
+    const result = await exportProject({
+      project: parsed.document.project,
+      root,
+      output,
+      outputPath: path.join(root, 'mono.wav'),
+      rangeDuration: { num: 1, den: 1 },
+      timeoutMs: 60_000,
+    });
+    const probe = await probeMedia(result.path);
+    assert.equal(probe.audio?.channels, 1, 'explicit mono policy yields one channel');
+    assert.ok(
+      !result.issues.some((issue) => issue.includes('downmixed')),
+      'explicit policy produces no silent-downmix issue',
+    );
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

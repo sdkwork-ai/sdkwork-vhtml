@@ -256,6 +256,11 @@ export function cacheFilePath(root: string, layout: ProjectLayoutPaths = DEFAULT
   return path.join(root, layout.cache, 'generated.json');
 }
 
+/** RFC-0016 deterministic frame-cache directory (`.vhtml/cache/frames`). */
+export function framesCacheDir(root: string, layout: ProjectLayoutPaths = DEFAULT_LAYOUT): string {
+  return path.join(root, layout.cache, 'frames');
+}
+
 export function legacyCacheFilePath(root: string): string {
   return path.join(root, '.vhtml-cache', 'generated.json');
 }

@@ -50,6 +50,7 @@ import {
   cacheFilePath,
   defaultManifest,
   ensureProjectLayout,
+  framesCacheDir,
   isInsideRoot,
   readManifest,
   resolveProjectInput,
@@ -66,7 +67,7 @@ import {
 } from '@sdkwork/vhtml-project/assets';
 import { packProject, packageInfo, unpackProject } from '@sdkwork/vhtml-project/pack';
 
-const VERSION = '1.1.2';
+const VERSION = '1.1.3';
 
 const BOOLEAN_FLAGS = new Set([
   'json', 'open', 'generate', 'force', 'write', 'no-assets', 'burn-captions',
@@ -74,6 +75,7 @@ const BOOLEAN_FLAGS = new Set([
   'all', 'no-generate', 'backup', 'probe', 'full', 'check', 'no-cache',
   'allow-network', 'allow-remote', 'include-renders', 'no-generated', 'missing',
   'unused', 'yes', 'assets', 'dry-run', 'insecure', 'detach',
+  'frame-cache', 'frame-cache-refresh', 'no-frame-cache',
 ]);
 
 interface ParsedArgs {
@@ -528,7 +530,10 @@ async function commandExportBatch(args: ParsedArgs, batchRaw: string): Promise<n
   const reportDir = stringFlag(args, 'report-dir') ? path.resolve(stringFlag(args, 'report-dir')!) : undefined;
   if (reportDir) fs.mkdirSync(reportDir, { recursive: true });
   const loudness = stringFlag(args, 'loudness') !== undefined ? Number(stringFlag(args, 'loudness')) : undefined;
-  const results: Array<{ preset: string; ok: boolean; path?: string; error?: string }> = [];
+  // RFC-0016: batch presets share one sampling pass through the frame cache;
+  // presets differ only in encoder args, so preset 2..N are cache hits.
+  const frameCacheDir = bool(args, 'no-frame-cache') ? undefined : framesCacheDir(loaded.root, loaded.layout);
+  const results: Array<{ preset: string; ok: boolean; path?: string; error?: string; framesFromCache?: number }> = [];
   let failures = 0;
   for (const presetId of presetIds) {
     const output = outputForDelivery(project, presetId, { id: `batch-${presetId}` });
@@ -546,10 +551,12 @@ async function commandExportBatch(args: ParsedArgs, batchRaw: string): Promise<n
         loudness,
         chapters: bool(args, 'chapters'),
         reportPath: reportDir ? path.join(reportDir, `${project.id}-${presetId}.report.json`) : undefined,
+        frameCacheDir,
+        frameCacheRefresh: bool(args, 'frame-cache-refresh'),
         timeoutMs: 30 * 60_000,
       });
-      results.push({ preset: presetId, ok: true, path: result.path });
-      console.error(color(32, `[batch ${presetId}] ${path.relative(process.cwd(), result.path)} (${result.durationSeconds.toFixed(2)}s)`));
+      results.push({ preset: presetId, ok: true, path: result.path, framesFromCache: result.frameCache?.hits });
+      console.error(color(32, `[batch ${presetId}] ${path.relative(process.cwd(), result.path)} (${result.durationSeconds.toFixed(2)}s${result.frameCache ? `, ${result.frameCache.hits}/${result.frameCache.hits + result.frameCache.misses} frames cached` : ''})`));
     } catch (error) {
       failures += 1;
       results.push({ preset: presetId, ok: false, error: (error as Error).message });
@@ -621,6 +628,11 @@ async function commandExport(args: ParsedArgs): Promise<number> {
     ? outCandidate
     : path.resolve(outFlag ? process.cwd() : loaded.root, outCandidate);
   const progressEnabled = !bool(args, 'quiet') && !bool(args, 'json') && process.stderr.isTTY;
+  const downmixRaw = stringFlag(args, 'downmix');
+  if (downmixRaw !== undefined && downmixRaw !== 'mono' && downmixRaw !== 'stereo') {
+    console.error(`--downmix expects "mono" or "stereo", got "${downmixRaw}"`);
+    return 2;
+  }
   const result = await exportProject({
     project: loaded.document.project,
     root: loaded.root,
@@ -637,6 +649,9 @@ async function commandExport(args: ParsedArgs): Promise<number> {
     audioBitrate: stringFlag(args, 'audio-bitrate'),
     sampleRate: stringFlag(args, 'sample-rate') ? Number(stringFlag(args, 'sample-rate')) : output.sampleRate,
     channels: output.channels,
+    downmix: downmixRaw as 'mono' | 'stereo' | undefined,
+    frameCacheDir: bool(args, 'frame-cache') ? framesCacheDir(loaded.root, loaded.layout) : undefined,
+    frameCacheRefresh: bool(args, 'frame-cache-refresh'),
     loudness: stringFlag(args, 'loudness') ? Number(stringFlag(args, 'loudness')) : undefined,
     normalizeAudio: !bool(args, 'no-normalize'),
     captionsPath: stringFlag(args, 'captions') ?? output.captionsPath,
@@ -660,6 +675,9 @@ async function commandExport(args: ParsedArgs): Promise<number> {
   } else {
     console.log(`${color(32, 'exported')} ${path.relative(process.cwd(), result.path)}`);
     console.log(`  ${result.format} ${result.width}x${result.height} @ ${formatRate(result.frameRate)}  ${result.frames} frames  ${(result.durationSeconds).toFixed(2)}s  ${(result.sizeBytes / 1024 / 1024).toFixed(2)} MiB`);
+    if (result.frameCache) {
+      console.log(color(90, `  frame cache: ${result.frameCache.hits}/${result.frameCache.hits + result.frameCache.misses} frames reused`));
+    }
     for (const issue of result.issues) console.error(color(33, `warning: ${issue}`));
     if (result.captionsPath) console.log(`  captions ${path.relative(process.cwd(), result.captionsPath)}`);
   }

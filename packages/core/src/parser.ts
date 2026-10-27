@@ -38,8 +38,9 @@ import {
   type GenerationDirection,
   type GenerationInput,
   type GenerationKind,
-  type GenerationOutputSpec,
+  GENERATION_REVIEW_STATUSES,
   type GenerationReview,
+  type GenerationOutputSpec,
   type GenerationRights,
   type GenerationSafety,
   type GenerationTask,
@@ -129,9 +130,6 @@ const OUTPUT_FORMATS = new Set<OutputFormat>(['mp4', 'webm', 'gif', 'png-sequenc
 const GENERATION_KINDS = new Set<GenerationKind>([
   'image', 'video', 'audio', 'music', 'speech', 'sfx', 'text', 'edit',
   'avatar', 'lipsync', 'dub', 'matte', 'translation', 'storyboard', 'transcribe',
-]);
-const GENERATION_REVIEW_STATUSES = new Set<GenerationReview['status']>([
-  'pending', 'approved', 'rejected', 'changes-requested',
 ]);
 const STORYBOARD_STATUSES = new Set<StoryboardStatus>([
   'idea', 'boarded', 'generating', 'ready', 'approved',
@@ -1475,6 +1473,22 @@ class VhtmlParser {
         }
       }
       const tagsRaw = this.attr(el, 'tags');
+      // RFC-0018: `<review>` children form the shot's approval history. The
+      // LAST element is the current record; preceding ones are the history.
+      const reviewRecords: GenerationReview[] = [];
+      for (const reviewEl of this.direct(el, 'review')) {
+        const reviewStatusRaw = this.attr(reviewEl, 'status') ?? 'pending';
+        if (!GENERATION_REVIEW_STATUSES.has(reviewStatusRaw as GenerationReview['status'])) {
+          this.error(ErrorCode.VALIDATION_INVALID_VALUE, `invalid shot review status "${reviewStatusRaw}"`, reviewEl, { objectId: id });
+          continue;
+        }
+        reviewRecords.push({
+          status: reviewStatusRaw as GenerationReview['status'],
+          reviewer: this.attr(reviewEl, 'reviewer'),
+          notes: textOf(reviewEl).trim() || undefined,
+          reviewedAt: this.attr(reviewEl, 'reviewed-at'),
+        });
+      }
       const shot: StoryboardShot = {
         id,
         order: this.intAttr(el, 'order', index + 1, 1, 1_000_000) ?? index + 1,
@@ -1489,6 +1503,8 @@ class VhtmlParser {
         direction,
         tags: tagsRaw ? tagsRaw.split(',').map((tag) => tag.trim()).filter(Boolean) : undefined,
         notes: (this.attr(el, 'notes') ?? (notesEl ? textOf(notesEl) : '')).trim() || undefined,
+        review: reviewRecords.at(-1),
+        reviewHistory: reviewRecords.length > 1 ? reviewRecords.slice(0, -1) : undefined,
         source: this.loc(el),
       };
       shots.push(shot);
@@ -2365,6 +2381,11 @@ class VhtmlParser {
       if (fitRaw && !fit) {
         this.error(ErrorCode.VALIDATION_INVALID_VALUE, `unsupported output fit "${fitRaw}"`, el, { objectId: id });
       }
+      const downmixRaw = this.attr(el, 'downmix');
+      const downmix = downmixRaw === 'mono' || downmixRaw === 'stereo' ? downmixRaw : undefined;
+      if (downmixRaw && !downmix) {
+        this.error(ErrorCode.VALIDATION_INVALID_VALUE, `unsupported output downmix "${downmixRaw}" (expected "mono" or "stereo")`, el, { objectId: id });
+      }
       const output: OutputConfig = {
         id,
         timeline: timelineId,
@@ -2373,6 +2394,7 @@ class VhtmlParser {
         height: this.intAttr(el, 'height', this.project.composition.height, 16, 16384) ?? this.project.composition.height,
         frameRate: this.project.composition.frameRate,
         fit,
+        downmix,
         rangeStart,
         rangeDuration,
         videoCodec: this.attr(el, 'video-codec', 'codec') ?? codecs.videoCodec,

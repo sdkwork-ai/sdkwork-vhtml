@@ -505,7 +505,24 @@ class Serializer {
       this.line(`<direction>${escapeHtml(JSON.stringify(shot.direction))}</direction>`);
     }
     if (shot.notes) this.line(`<notes>${escapeHtml(shot.notes)}</notes>`);
+    // RFC-0018 approval history first, current review LAST (parser contract:
+    // the last <review> element is the current record).
+    for (const record of shot.reviewHistory ?? []) {
+      this.writeShotReview(record);
+    }
+    if (shot.review) this.writeShotReview(shot.review);
     this.close('</shot>');
+  }
+
+  private writeShotReview(review: StoryboardShot['review']): void {
+    if (!review) return;
+    this.line(
+      `<review${attrs([
+        ['status', review.status],
+        ['reviewer', review.reviewer],
+        ['reviewed-at', review.reviewedAt],
+      ])}>${review.notes ? escapeHtml(review.notes) : ''}</review>`,
+    );
   }
 
   private writeTimeline(timeline: Timeline): void {
@@ -725,6 +742,7 @@ class Serializer {
         ['height', output.height],
         ['frame-rate', formatRate(output.frameRate)],
         ['fit', output.fit],
+        ['downmix', output.downmix],
         ['start', output.rangeStart ? formatTime(output.rangeStart) : undefined],
         ['duration', output.rangeDuration ? formatTime(output.rangeDuration) : undefined],
         ['video-codec', output.videoCodec],

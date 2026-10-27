@@ -31,6 +31,7 @@ import {
   type Marker,
   type OutputConfig,
   type OutputFormat,
+  type DownmixPolicy,
   type Project,
   type Scene,
   type SceneClip,
@@ -542,6 +543,8 @@ export interface OutputSpec {
   videoBitrate?: string;
   captionsPath?: string;
   burnCaptions?: boolean;
+  /** RFC-0017 explicit audio downmix policy (default stereo). */
+  downmix?: DownmixPolicy;
   rangeStart?: TimeInput;
   rangeDuration?: TimeInput;
 }
@@ -571,6 +574,7 @@ export function outputConfig(spec: OutputSpec, composition: Composition, index: 
     crf: spec.crf,
     preset: spec.preset,
     audioBitrate: spec.audioBitrate,
+    downmix: spec.downmix,
     sampleRate: composition.sampleRate,
     channels: composition.channels,
     pixelFormat: 'yuv420p',

@@ -202,3 +202,23 @@ StoryboardShot ──> GenerationTask ──> gen:<id> Asset ──> Clip ──
 - `model.schema.json#/$defs/storyboardShot`
 - `model.schema.json` 的 `project.storyboard`
 - 编辑操作类型由 `@sdkwork/vhtml-core/edits` 导出。
+
+## 9. 审查记录与审批历史（RFC-0018，1.1.3）
+
+`StoryboardShot` 携带结构化审查记录，与生成任务的 `review` 同形
+（`status/reviewer/notes/reviewedAt`）：
+
+- **当前记录** `shot.review`；**既往记录** `shot.reviewHistory`（升序，
+  只追加）。
+- 文档语法：`<shot>` 的 `<review status reviewer reviewed-at>` 子元素，
+  **最后一个 `<review>` 是当前记录**，其前的是历史（序列化同序还原）。
+- 编辑操作 `{ op: 'storyboard.review', shotId, review }`：旧记录入历史；
+  `approved` 将非 `ready` 镜头推进为 `approved`，
+  `changes-requested`/`rejected` 把已推进镜头退回 `boarded`（`idea`
+  不变）；非法 status 报 `EDIT_INVALID_OPERATION`，镜头缺失报
+  `EDIT_TARGET_NOT_FOUND`。
+- 状态集合 `GENERATION_REVIEW_STATUSES` 与生成任务同源；undo/redo 与
+  批量 `batch` 语义不变。
+- 典型闭环：Agent 起草分镜 → 人审 `storyboard.review` → approved 后
+  `storyboard.apply` 物化到时间线（与生成任务 `review.status` 的交付
+  门禁一致，见 commercial.md）。

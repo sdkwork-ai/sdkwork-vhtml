@@ -2,9 +2,9 @@
 
 **状态**：候选规范（Candidate Specification），参考实现已实现并通过一致性测试  
 **规范版本**：1.1  
-**文档版本**：1.1.2（生成用量 / 角色圣经 / 效果插件注册表）  
+**文档版本**：1.1.3（帧缓存 / 降混策略 / 分镜审查）  
 **替代**：VHTML 1.0 Draft / Draft 0.2  
-**实现**：`@sdkwork/vhtml` 1.1.2
+**实现**：`@sdkwork/vhtml` 1.1.3
 
 > 本文中的 MUST、MUST NOT、SHOULD、SHOULD NOT、MAY 按 RFC 2119 解释。
 > 规范中的时间、模型字段和元素名称为规范性内容；SDK、CLI 和编辑器交互属于
@@ -808,6 +808,12 @@ Captions → WebVTT sidecar ─────────────────�
   `<extension kind/base>` 效果/转场插件注册表与确定性降级求值
   （[rfc/RFC-0015](./rfc/RFC-0015-extension-plugin-registry.md)）；
   PNG 序列导出遵循交付 fit/尺寸。
+- 1.1.3（全部为增量可选能力，见 RFC-0016/0017/0018）：确定性帧缓存与
+  批量采样共享（[rfc/RFC-0016](./rfc/RFC-0016-frame-cache.md)）；
+  `<output downmix>` 显式音频降混策略
+  （[rfc/RFC-0017](./rfc/RFC-0017-audio-downmix-policy.md)）；分镜
+  `<review>` 审查记录与审批历史及 `storyboard.review` 编辑操作
+  （[rfc/RFC-0018](./rfc/RFC-0018-storyboard-review.md)）。
 
 ---
 

@@ -57,7 +57,7 @@ export const GENERATION_KINDS = [
 export function capabilityReport(options: { browserVersion?: string; ffmpegVersion?: string; frameRate?: Rate } = {}): CapabilityReport {
   return {
     implementation: '@sdkwork/vhtml',
-    version: '1.1.2',
+    version: '1.1.3',
     specVersion: '1.1',
     profiles: {
       parser: true,
@@ -112,6 +112,9 @@ export function capabilityReport(options: { browserVersion?: string; ffmpegVersi
       'generation-usage': 'per-task usage records (<usage> cost/credits/tokens/compute-seconds), quota ceilings and export-report totals',
       'character-bibles': 'versioned character/style bible library (<characters>) referenced as character:/style: inputs; versions participate in the generation cache key',
       'effect-registry': 'declared effect/audio-effect/transition types via <extension kind=... base=...>; renderers desugar onto the built-in base',
+      'frame-cache': 'deterministic read-through frame cache (RFC-0016) keyed by project hash + range + renderer fingerprint; batch presets share one sampling pass',
+      'audio-downmix-policy': 'explicit output downmix=mono|stereo (RFC-0017); implicit >2ch folds are reported as issues',
+      'storyboard-review': 'per-shot review records with append-only approval history and the storyboard.review edit op (RFC-0018)',
       chapters: true,
       'delivery-presets': 'web, social vertical/square/portrait, cinema, GIF and audio-only profiles',
     },

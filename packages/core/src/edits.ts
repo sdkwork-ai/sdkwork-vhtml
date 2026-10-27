@@ -17,6 +17,7 @@ import {
   findTrack,
   resolveReference,
   generationKindToAssetKind,
+  GENERATION_REVIEW_STATUSES,
   type TimelineClip,
   type Animation,
   type Asset,
@@ -217,6 +218,11 @@ export type EditOperation =
   | { op: 'storyboard.remove'; shotId: string }
   | { op: 'storyboard.move'; shotId: string; to: number }
   | { op: 'storyboard.reorder'; shotIds: string[] }
+  /**
+   * RFC-0018: record a review decision on a shot. The previous review (if
+   * any) is appended to `reviewHistory`, so approval history accumulates.
+   */
+  | { op: 'storyboard.review'; shotId: string; review: NonNullable<StoryboardShot['review']> }
   | { op: 'composition.set'; composition: Partial<Composition> }
   | { op: 'batch'; operations: EditOperation[] };
 
@@ -694,6 +700,9 @@ class Editor {
         return;
       case 'storyboard.set':
         this.storyboardSet(operation);
+        return;
+      case 'storyboard.review':
+        this.storyboardReview(operation);
         return;
       case 'storyboard.remove':
         this.storyboardRemove(operation.shotId);
@@ -2453,6 +2462,31 @@ class Editor {
       }
     }
     this.normalizeStoryboard();
+    this.changed.push(shot.id);
+  }
+
+  /** RFC-0018: record a review decision; the previous review moves to history. */
+  private storyboardReview(operation: Extract<EditOperation, { op: 'storyboard.review' }>): void {
+    const shot = this.storyboardShots().find((candidate) => candidate.id === operation.shotId);
+    if (!shot) {
+      this.fail(ErrorCode.EDIT_TARGET_NOT_FOUND, `shot "${operation.shotId}" does not exist`);
+      return;
+    }
+    const review = operation.review;
+    if (!GENERATION_REVIEW_STATUSES.has(review.status)) {
+      this.fail(ErrorCode.EDIT_INVALID_OPERATION, `invalid shot review status "${String(review.status)}"`);
+      return;
+    }
+    if (shot.review) {
+      shot.reviewHistory = [...(shot.reviewHistory ?? []), shot.review];
+    }
+    shot.review = { ...review };
+    // A decision that advances the shot keeps the status field honest: an
+    // approved review marks the shot approved, a rejection sends it back.
+    if (review.status === 'approved' && shot.status !== 'ready') shot.status = 'approved';
+    if (review.status === 'changes-requested' || review.status === 'rejected') {
+      shot.status = shot.status === 'idea' ? 'idea' : 'boarded';
+    }
     this.changed.push(shot.id);
   }
 

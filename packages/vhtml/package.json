@@ -1,6 +1,6 @@
 {
   "name": "@sdkwork/vhtml",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "description": "VHTML 1.1 complete toolkit: core model, code-first SDK, deterministic renderer, media export, project management, generation, editor and Studio.",
   "type": "module",
   "license": "MIT",
