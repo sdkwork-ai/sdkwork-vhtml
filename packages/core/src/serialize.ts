@@ -636,6 +636,15 @@ class Serializer {
     for (const effect of clip.effects) this.writeEffect(effect, 'effect');
     for (const effect of clip.audioEffects) this.writeEffect(effect, 'audio-effect');
     for (const animation of clip.animations) this.writeAnimation(animation, false);
+    if (clip.metadata && Object.keys(clip.metadata).length) {
+      // Wrapped form: attribute names are lowercased by the HTML parser, so
+      // camelCase metadata keys (linkId, detachedFrom) ride in name/value attrs.
+      this.open('<metadata>');
+      for (const [name, value] of Object.entries(clip.metadata)) {
+        this.line(`<meta${attrs([['name', name], ['value', value]])}></meta>`);
+      }
+      this.close('</metadata>');
+    }
     this.close(`</${tag}>`);
   }
 

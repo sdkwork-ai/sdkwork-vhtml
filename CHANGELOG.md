@@ -2,6 +2,44 @@
 
 ## 1.1.4
 
+### Studio: professional-editing polish, round 2 (CapCut alignment)
+
+- **Fixed: clip metadata never persisted.** `clip.metadata` — the carrier for
+  link pairs (`linkId`), detach-audio pairing (`detachedFrom` /
+  `audioDetachedTo`) and storyboard provenance (`fromShot`) — was dropped by
+  the XML serializer, so linked AV pairs silently separated on every
+  save/reload. Clips/cues now serialize `<metadata><meta name="…" value="…">`
+  children (name/value form keeps camelCase keys intact; the HTML parser
+  lowercases attribute names), the parser reads both forms, and the Studio
+  model projection exposes metadata to the client. Spec §3.4 documents the
+  element. Round-trip unit test included.
+- **Fixed: `timeline.rippleCut` boundary and overlap semantics.** Clips whose
+  edge sits exactly on a cut boundary tripped `clip.split`'s
+  strictly-interior requirement and rejected the whole edit; a stale snapshot
+  loop re-cut clips that an earlier ripple had shifted into the range;
+  overlapping clips (caption cues) accumulated double shifts. RippleCut now
+  works in two phases — all splits decided from frozen original extents, then
+  one uniform (end − start) shift per lane with overlapping middles removed
+  once. Three new unit tests cover head/tail-aligned edges and overlapping
+  cues.
+- **Slip gesture (Ctrl+drag)**: dragging a media clip body with Ctrl held
+  slips its source window (`clip.slip`) with a live source-in readout;
+  project timing never moves. Plain Ctrl+click still toggles selection
+  (deferred to pointerup when nothing moved).
+- **Link / Unlink / Replace source / Ripple cut In→Out in the UI**: clip
+  context menu gains Link clips (multi-selection), Unlink (linked clip) and
+  Replace source from Assets…, which arms the Assets tab with a per-asset ↔
+  button executing `clip.replace` (timing kept, type compatibility
+  pre-screened to match the engine). The ruler menu gains Ripple cut
+  In→Out (all unlocked lanes).
+- **SRT / WebVTT caption import**: new `/api/captions/import` endpoint runs
+  the normative `cuesToClips` converter (cue JSON / SRT / WebVTT) and adds
+  every cue to the caption lane at its original timestamps, creating the lane
+  when missing and keeping ids unique across repeated imports; the Captions
+  panel gets a paste-and-import flow. Integration test included.
+- **Lane height resize**: drag a lane's bottom edge (30–200 px, persisted per
+  lane in localStorage); clip blocks and waveforms grow with the lane.
+
 ### Studio: professional-editing polish (CapCut alignment)
 
 - **Fixed: blank Studio UI.** Five unbalanced-paren syntax errors inside the

@@ -112,11 +112,14 @@ validated Core Model edit (undoable, saved atomically).
   right) or `overwrite` (replace the covered range) for drops and pastes.
   Linked clips ride together: a detached-audio pair keeps video+audio united.
 - **Context menu** (right-click a clip, lane header, ruler or transition):
-  split, duplicate, copy/cut/paste, speed presets (0.25×–4×), speed ramps
-  (slow–fast–slow / fast–slow–fast / clear), freeze frame, detach audio,
-  enable/disable, mute, ripple delete, delete; lane menus rename, mute, hide,
-  lock, add or delete lanes; ruler menus drop/rename/delete markers and set
-  In/Out points.
+  split, duplicate, copy/cut/paste, **link/unlink** (linked clips move
+  together, CapCut-style AV pairs), **replace source from Assets…** (arms the
+  Assets tab with per-asset ↔ buttons running `clip.replace`, timing kept),
+  speed presets (0.25×–4×), speed ramps (slow–fast–slow / fast–slow–fast /
+  clear), freeze frame, detach audio, enable/disable, mute, ripple delete,
+  delete; lane menus rename, mute, hide, lock, add or delete lanes; ruler
+  menus drop/rename/delete markers, set In/Out points and **ripple cut the
+  In→Out range across every unlocked lane** (the text-based-editing op).
 
 ![Ruler context menu](./screenshots/studio-ruler-menu.png)
 - **Markers** (`M`) appear as flags on the ruler; In (`I`) / Out (`O`) points
@@ -150,7 +153,9 @@ validated Core Model edit (undoable, saved atomically).
 - **📷 Frame** (transport) renders the current frame to `renders/*.png` via the
   `/api/snapshot` job endpoint. With In/Out set, playback **loops the range**.
   `Alt`+drag duplicates the selection at the drop position; `Z` zooms the
-  timeline to the selection.
+  timeline to the selection. **Ctrl+drag slips the source window** of a video/
+  audio clip (`clip.slip`) with a live source-in readout — project timing
+  never moves; Ctrl+click without dragging still toggles selection.
 - **Compound clips**: right-click creates a nested-timeline clip from the
   selection (`timeline.nest`) and flattens one again (`timeline.unnest`).
 - **Crop**: the Properties panel crops a clip by frame percentage
@@ -166,6 +171,8 @@ validated Core Model edit (undoable, saved atomically).
   blur), duration, direction and dip color.
 - **Lane drag reorder**: drag a lane header vertically past a neighbour's
   midpoint to restack lanes; orders are written as `track.set` batch.
+- **Lane height**: drag a lane's bottom edge to resize it (30–200px, persisted
+  per lane); clip blocks and waveforms grow with the lane.
 - Lane headers carry mute / solo / hide / lock switches; the lane context menu
   also sets **lane volume/pan** (consumed by the export mixer) — all through
   `track.set` semantics:
@@ -215,6 +222,11 @@ click a cue to edit its text, optional **speaker** and timing in Properties. The
 writes the caption lane's `captionStyle` CSS (font size, text color, background,
 bottom offset) so every cue on that lane shares one look; per-cue `style`
 overrides still win. Cues export as WebVTT/SRT and can be burned in.
+
+**Import captions**: paste SRT, WebVTT or cue JSON into the Captions tab and
+press ⤓ Import cues — the normative `cuesToClips` converter parses it and every
+cue lands on the caption lane at its original timestamps (the lane is created
+when missing; repeated imports never collide on ids).
 
 ## External files
 

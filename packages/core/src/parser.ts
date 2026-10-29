@@ -1964,6 +1964,17 @@ class VhtmlParser {
       source: this.loc(el),
     } satisfies Omit<SceneClip, 'kind' | 'ref' | 'id'> & { id: string; ref?: string };
 
+    const meta = base.metadata as Record<string, string>;
+    for (const metadataEl of this.direct(el, 'metadata')) {
+      for (const attr of metadataEl.attrs) {
+        meta[attr.name] = attr.value;
+      }
+    }
+    for (const metaEl of this.wrapped(el, 'metadata', 'meta')) {
+      const name = this.attr(metaEl, 'name');
+      if (name) meta[name] = this.attr(metaEl, 'value') ?? '';
+    }
+
     if (!BLEND_MODES.has(base.blend)) {
       this.error(ErrorCode.VALIDATION_INVALID_VALUE, `unknown blend mode "${base.blend}"`, el, { objectId: id });
       base.blend = 'normal';

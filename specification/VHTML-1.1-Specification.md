@@ -166,6 +166,7 @@ VHTML 1.1 不承诺：
 | `markers` / `marker` | `timeline` | 标记与章节 |
 | `animations` | `project` | 项目级动画容器 |
 | `metadata` | `project` | 项目元数据（属性） |
+| `metadata` / `meta` | `clip` / `cue` | 片段元数据：`<metadata><meta name="…" value="…"></metadata>`（camelCase 键如 `linkId` MUST 用 name/value 形式——HTML 解析把属性名转小写；`<metadata k="v">` 属性形式仅适用于全小写键） |
 | `requirements` / `requires` | `project` | 能力要求 |
 | `extension` | `project` | 扩展声明 |
 | `style` / `script` | 文档 | 全局 CSS / JavaScript |

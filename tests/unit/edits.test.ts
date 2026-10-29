@@ -5,6 +5,7 @@ import { applyEditOperations, EditSession } from '@sdkwork/vhtml-core/edits';
 import { validateDocument } from '@sdkwork/vhtml-core/validate';
 import { clipEnd, findClip } from '@sdkwork/vhtml-core/model';
 import { rat, toNumber } from '@sdkwork/vhtml-core/time';
+import { serializeDocument } from '@sdkwork/vhtml-core/serialize';
 
 const SOURCE = `<project id="edit-test" version="1.1"><settings><composition width="640" height="360" frame-rate="30/1" duration="10s" /></settings>
 <assets><asset id="media" type="video" src="./m.mp4" duration="10s" /></assets>
@@ -144,4 +145,21 @@ test('scene.set updates authored HTML and is undoable', () => {
   session.undo();
   assert.equal(session.project.scenes[0]!.html, before);
   assert.equal(session.project.scenes[0]!.src, undefined);
+});
+
+test('clip metadata (linkId) round-trips the .vhtml file', () => {
+  const session = new EditSession(load());
+  const linked = session.apply([{ op: 'clip.link', clipIds: ['a', 'b'] }]);
+  assert.equal(linked.ok, true);
+  const linkId = session.project.timelines[0]!.tracks[0]!.clips[0]!.metadata?.linkId;
+  assert.ok(linkId, 'link op records a linkId');
+
+  const output = serializeDocument({ specVersion: '1.1', project: session.project });
+  assert.match(output, /<meta name=\"linkId\"/);
+
+  const reparsed = parseVhtml(output, { file: 'D:/tmp/edit-roundtrip.vhtml' });
+  assert.equal(reparsed.diagnostics.filter((diagnostic) => diagnostic.severity === 'error').length, 0);
+  const roundTripped = reparsed.document.project.timelines[0]!.tracks[0]!.clips;
+  assert.equal(roundTripped[0]!.metadata?.linkId, linkId);
+  assert.equal(roundTripped[1]!.metadata?.linkId, linkId);
 });

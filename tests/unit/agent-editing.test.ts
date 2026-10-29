@@ -124,3 +124,85 @@ test('storyboard.apply with generation links resolves gen refs to the right clip
   assert.equal(clip.kind, 'video');
   assert.equal(clip.ref, 'gen:bg');
 });
+
+test('timeline.rippleCut handles clips aligned to the cut boundaries', () => {
+  // A clip that STARTS exactly at the cut start and one that ENDS exactly at
+  // the cut end must not trip clip.split's strictly-interior requirement.
+  const aligned = BASE
+    .replace(
+      '<clip id="a" ref="asset:v1" start="0s" duration="3s" />',
+      '<clip id="a" ref="asset:v1" start="0s" duration="1s" /><clip id="head" ref="asset:v1" start="1s" duration="1s" /><clip id="b" ref="asset:v2" start="2s" duration="3s" />',
+    )
+    .replace(
+      '<clip id="b" ref="asset:v2" start="3s" duration="3s" />',
+      '',
+    );
+  const { result } = edit(aligned, [
+    { op: 'timeline.rippleCut', trackIds: ['v', 'aud'], start: '1s', end: '2s' },
+  ]);
+  assert.equal(result.ok, true, result.diagnostics.map((d) => d.message).join('\n'));
+  const timeline = result.project.timelines[0]!;
+  const visual = timeline.tracks[0]!.clips;
+  // "head" covered exactly [1s,2s) — consumed entirely. "a" stays at 0..1s,
+  // "b" shifts left by 1s to start at 1s.
+  assert.ok(!visual.some((clip) => clip.id === 'head'), 'aligned head clip removed');
+  const a = visual.find((clip) => clip.id === 'a')!;
+  const b = visual.find((clip) => clip.id === 'b')!;
+  assert.equal(toNumber(a.start), 0);
+  assert.equal(toNumber(b.start), 1);
+  // Narration spans the whole range [0,6): split at both edges, middle removed.
+  const narration = timeline.tracks[1]!.clips;
+  assert.equal(narration.length, 2);
+  assert.equal(toNumber(narration[0]!.start), 0);
+  assert.equal(toNumber(narration[0]!.duration), 1);
+  assert.equal(toNumber(narration[1]!.start), 1);
+  // A clip ENDING exactly at the cut end is consumed without a boundary split.
+  const endAligned = BASE
+    .replace(
+      '<clip id="a" ref="asset:v1" start="0s" duration="3s" />',
+      '<clip id="a" ref="asset:v1" start="0s" duration="1s" /><clip id="tail" ref="asset:v1" start="1s" duration="1s" /><clip id="b" ref="asset:v2" start="2s" duration="3s" />',
+    )
+    .replace(
+      '<clip id="b" ref="asset:v2" start="3s" duration="3s" />',
+      '',
+    );
+  const cutEnd = edit(endAligned, [
+    { op: 'timeline.rippleCut', trackIds: ['v', 'aud'], start: '0.5s', end: '2s' },
+  ]);
+  assert.equal(cutEnd.result.ok, true, cutEnd.result.diagnostics.map((d) => d.message).join('\n'));
+  const visual2 = cutEnd.result.project.timelines[0]!.tracks[0]!.clips;
+  // "a" is trimmed to 0..0.5s, "tail" (1..2s) is fully inside and removed, "b" ripples left.
+  const a2 = visual2.find((clip) => clip.id === 'a')!;
+  assert.equal(toNumber(a2.duration), 0.5);
+  assert.ok(!visual2.some((clip) => clip.id === 'tail'), 'fully covered clip removed');
+  const b2 = visual2.find((clip) => clip.id === 'b')!;
+  assert.equal(toNumber(b2.start), 0.5);
+});
+
+test('timeline.rippleCut shifts the lane by exactly the range once under overlapping clips', () => {
+  // Overlapping caption cues must not double the ripple shift: the gap closes
+  // by (end - start) total, not by the sum of removed middle durations.
+  const overlapping = BASE
+    .replace(
+      '</timeline>',
+      '<lane id="cap" type="caption" order="2"><cue id="cueA" text="long" start="0.9s" duration="3s"></cue><cue id="cueB" text="inner" start="1s" duration="1.5s"></cue></lane></timeline>',
+    );
+  const { result } = edit(overlapping, [
+    { op: 'timeline.rippleCut', trackIds: ['cap'], start: '1s', end: '2s' },
+  ]);
+  assert.equal(result.ok, true, result.diagnostics.map((d) => d.message).join('\n'));
+  const cues = result.project.timelines[0]!.tracks.find((track) => track.id === 'cap')!.clips;
+  const ids = cues.map((clip) => clip.id).sort();
+  // Both overlapping middles are removed; each clip keeps its remainder and
+  // everything shifts left by exactly the range (1s), overlaps included.
+  assert.deepEqual(ids, ['cueA', 'cueA-keep', 'cueB-keep']);
+  const head = cues.find((clip) => clip.id === 'cueA')!;
+  const keep = cues.find((clip) => clip.id === 'cueA-keep')!;
+  const innerKeep = cues.find((clip) => clip.id === 'cueB-keep')!;
+  assert.equal(toNumber(head.start), 0.9);
+  assert.equal(toNumber(head.duration), 0.1);
+  assert.equal(toNumber(keep.start), 1);
+  assert.equal(toNumber(keep.duration), 1.9);
+  assert.equal(toNumber(innerKeep.start), 1);
+  assert.equal(toNumber(innerKeep.duration), 0.5);
+});

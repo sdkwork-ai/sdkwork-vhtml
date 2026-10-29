@@ -1900,40 +1900,51 @@ class Editor {
       this.fail(ErrorCode.EDIT_TARGET_NOT_FOUND, `lane "${missing}" does not exist`);
       return;
     }
-    // Phase 1: cut the range on every lane (split at both edges, remove the middle).
+    // Two phases per lane, decided from FROZEN original extents: an early
+    // rippleDelete shifts later clips in place, so overlap decisions made from
+    // live positions would double-cut clips that flowed into the range.
     for (const pair of tracks) {
       const track = pair!.track;
-      const timeline = pair!.timeline;
-      for (const clip of [...track.clips]) {
-        const clipStart = clip.start;
-        const clipStop = clipEnd(clip);
-        if (!gt(clipStop, start) || !lt(clipStart, end)) continue;
-        if (!gt(clipStart, start)) {
-          // Head is at/before the cut: trim the tail at `start`, then handle the rest.
-          if (gt(clipStop, end)) {
-            // Range is fully inside the clip: split at both edges and ripple-delete the middle.
-            const rightAtStart = uniqueId(this.project, `${clip.id}-cut`);
-            this.apply({ op: 'clip.split', clipId: clip.id, at: start, id: rightAtStart });
-            const rightAtEnd = uniqueId(this.project, `${clip.id}-keep`);
-            this.apply({ op: 'clip.split', clipId: rightAtStart, at: end, id: rightAtEnd });
-            this.apply({ op: 'clip.rippleDelete', clipId: rightAtStart });
-          } else {
-            // Tail inside the range: split at start, ripple-delete the tail.
-            const tail = uniqueId(this.project, `${clip.id}-tail`);
-            this.apply({ op: 'clip.split', clipId: clip.id, at: start, id: tail });
-            this.apply({ op: 'clip.rippleDelete', clipId: tail });
-          }
-        } else if (!lt(clipStop, end)) {
-          // Head inside the range, tail after it: split at end, ripple-delete the head.
-          const right = uniqueId(this.project, `${clip.id}-keep`);
-          this.apply({ op: 'clip.split', clipId: clip.id, at: end, id: right });
-          this.apply({ op: 'clip.rippleDelete', clipId: clip.id });
-        } else {
-          // Fully contained.
-          this.apply({ op: 'clip.rippleDelete', clipId: clip.id });
+      void pair!.timeline;
+      // Phase 1: split every overlapping clip at the range edges that fall
+      // strictly inside it (clip.split rejects boundary times, so a clip edge
+      // already sitting on start/end is left unsplit).
+      const frozen = track.clips.map((clip) => ({ id: clip.id, start: clip.start, stop: clipEnd(clip) }));
+      for (const entry of frozen) {
+        if (!gt(entry.stop, start) || !lt(entry.start, end)) continue;
+        const headBefore = lt(entry.start, start); // head extends before the cut
+        const tailAfter = gt(entry.stop, end); // tail extends past the cut
+        if (headBefore && tailAfter) {
+          const middleId = uniqueId(this.project, `${entry.id}-cut`);
+          this.apply({ op: 'clip.split', clipId: entry.id, at: start, id: middleId });
+          const rightId = uniqueId(this.project, `${entry.id}-keep`);
+          this.apply({ op: 'clip.split', clipId: middleId, at: end, id: rightId });
+        } else if (headBefore) {
+          const tailId = uniqueId(this.project, `${entry.id}-tail`);
+          this.apply({ op: 'clip.split', clipId: entry.id, at: start, id: tailId });
+        } else if (tailAfter) {
+          const rightId = uniqueId(this.project, `${entry.id}-keep`);
+          this.apply({ op: 'clip.split', clipId: entry.id, at: end, id: rightId });
         }
-        void timeline;
+        // else: the clip is fully contained — no split needed.
       }
+      // Phase 2: remove every clip now fully inside the range, then close the
+      // gap with ONE uniform shift. Accumulated per-clip ripple deletes would
+      // double-count overlapping clips (caption cues may overlap); a uniform
+      // shift moves the lane left by exactly (end - start).
+      const middleIds = track.clips
+        .filter((clip) => !lt(clip.start, start) && !gt(clipEnd(clip), end))
+        .map((clip) => clip.id);
+      for (const clipId of middleIds) {
+        this.apply({ op: 'clip.remove', clipId });
+      }
+      const shift = sub(end, start);
+      for (const other of track.clips) {
+        if (lt(other.start, end)) continue;
+        other.start = sub(other.start, shift);
+        if (lt(other.start, ZERO)) other.start = ZERO;
+      }
+      for (const clipId of middleIds) this.changed.push(clipId);
     }
     // rippleDelete already closes the gap on each cut lane, so the content
     // after the cut flows left by exactly (end - start). No extra shift here:

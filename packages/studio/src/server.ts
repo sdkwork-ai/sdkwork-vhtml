@@ -12,6 +12,7 @@ import { parseVhtml } from '@sdkwork/vhtml-core/parser';
 import { materializeDocument } from '@sdkwork/vhtml-core/program';
 import { validateDocument, type ValidationResult } from '@sdkwork/vhtml-core/validate';
 import { EditSession, makeClipBase, type EditOperation } from '@sdkwork/vhtml-core/edits';
+import { cuesToClips } from '@sdkwork/vhtml-core/captions';
 import { serializeDocument } from '@sdkwork/vhtml-core/serialize';
 import { ErrorCode, VhtmlError, formatDiagnostic, type Diagnostic } from '@sdkwork/vhtml-core/errors';
 import { DELIVERY_PRESETS, outputForDelivery } from '@sdkwork/vhtml-core/presets';
@@ -198,6 +199,7 @@ interface StudioClip {
   effects: StudioEffect[];
   audioEffects: StudioEffect[];
   animations: StudioAnimation[];
+  metadata?: Record<string, string>;
   fadeIn?: number;
   fadeOut?: number;
 }
@@ -408,6 +410,7 @@ function studioModel(project: Project): StudioModel {
           effects: clip.effects.map(studioEffect),
           audioEffects: clip.audioEffects.map(studioEffect),
           animations: studioAnimations(clip),
+          metadata: clip.metadata && Object.keys(clip.metadata).length ? { ...clip.metadata } : undefined,
           fadeIn: clip.fadeIn ? toNumber(clip.fadeIn) : undefined,
           fadeOut: clip.fadeOut ? toNumber(clip.fadeOut) : undefined,
         })),
@@ -1066,6 +1069,64 @@ export async function startStudio(input: string | undefined, options: StudioOpti
           operations.push({ op: 'clip.add', trackId, clip });
           const outcome = applyAndSave(operations);
           sendJson(response, outcome.status, { ...outcome.body, clip });
+          return true;
+        }
+        if (request.method === 'POST' && url.pathname === '/api/captions/import') {
+          const body = JSON.parse((await readBody(request)) || '{}') as { text?: string; laneId?: string };
+          const source = (body.text ?? '').trim();
+          if (!source) {
+            sendJson(response, 400, { error: 'text is required' });
+            return true;
+          }
+          const timeline = findTimeline(session.project, session.project.mainTimeline) ?? session.project.timelines[0];
+          if (!timeline) {
+            sendJson(response, 400, { error: 'project has no timeline' });
+            return true;
+          }
+          let clips: Clip[];
+          try {
+            // The normative converter accepts cue JSON, SRT and WebVTT.
+            clips = cuesToClips(source, { idPrefix: 'cue-import' });
+          } catch (error) {
+            sendJson(response, 422, { error: `could not parse captions: ${String((error as Error).message ?? error)}` });
+            return true;
+          }
+          if (!clips.length) {
+            sendJson(response, 422, { error: 'no cues recognised — paste SRT, WebVTT or cue JSON' });
+            return true;
+          }
+          const operations: EditOperation[] = [];
+          let track = body.laneId ? timeline.tracks.find((candidate) => candidate.id === body.laneId) : undefined;
+          if (!track) track = timeline.tracks.find((candidate) => candidate.type === 'caption');
+          let trackId: string;
+          if (!track || track.type !== 'caption') {
+            trackId = nextStudioId(session.project, 'captions');
+            operations.push({
+              op: 'track.add',
+              timelineId: timeline.id,
+              track: {
+                id: trackId,
+                type: 'caption',
+                name: 'Captions',
+                order: timeline.tracks.reduce((max, candidate) => Math.max(max, candidate.order), 0) + 1,
+              },
+            });
+          } else {
+            trackId = track.id;
+          }
+          const takenIds = new Set(timeline.tracks.flatMap((candidate) => candidate.clips.map((clip) => clip.id)));
+          for (const cue of clips) {
+            let id = cue.id;
+            if (takenIds.has(id)) {
+              let suffix = 2;
+              while (takenIds.has(`cue-import-${suffix}`)) suffix += 1;
+              id = `cue-import-${suffix}`;
+            }
+            takenIds.add(id);
+            operations.push({ op: 'clip.add', trackId, clip: { ...cue, id } as Clip });
+          }
+          const outcome = applyAndSave(operations);
+          sendJson(response, outcome.status, { ...outcome.body, added: clips.length });
           return true;
         }
         if (request.method === 'POST' && url.pathname === '/api/reload') {

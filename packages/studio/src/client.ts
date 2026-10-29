@@ -137,6 +137,13 @@ main{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;min-he
 .asset-meta b{font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .asset-meta small{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .asset-card .add{position:absolute;right:4px;top:4px;width:22px;height:22px;padding:0;line-height:20px;border-radius:6px;background:rgba(8,15,26,.82)}
+.asset-card .add.swap{right:30px;background:rgba(110,231,255,.18);border-color:var(--accent);color:var(--accent)}
+.replace-banner{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--accent);border-radius:8px;background:rgba(110,231,255,.08);font-size:11px;margin-bottom:8px}
+.replace-banner span{flex:1}
+.caption-import{width:100%;background:#0a1220;color:var(--ink);border:1px solid var(--line);border-radius:8px;padding:7px;font:10.5px/1.5 ui-monospace,Consolas,monospace;resize:vertical;margin-bottom:6px}
+.lane{position:relative}
+.lane-resize{position:absolute;left:0;right:0;bottom:-3px;height:6px;cursor:ns-resize;z-index:5}
+.lane-resize:hover{background:rgba(110,231,255,.25)}
 .asset-card .relink{position:absolute;left:4px;top:4px;width:22px;height:22px;padding:0;line-height:20px;border-radius:6px;background:rgba(90,30,30,.9);border-color:#7d3b48;color:#ffc0c9}
 .asset-card.missing{outline:1px solid var(--err);outline-offset:-1px}
 .caption-row{display:flex;align-items:center;gap:8px;padding:6px 7px;border:1px solid var(--line);border-radius:7px;background:#0a1220;cursor:pointer}
@@ -251,7 +258,7 @@ main{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;min-he
 .clip svg.volume-env{position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:4;overflow:visible}
 .clip .volume-dot{position:absolute;width:9px;height:9px;border-radius:50%;background:#42e8a4;border:1px solid #0a3d2c;transform:translate(-50%,50%);cursor:move;z-index:6}
 .clip .volume-dot:hover{background:#7df0c6}
-.clip canvas.wave{position:absolute;left:0;right:0;bottom:2px;width:100%;height:18px;pointer-events:none;opacity:.8;z-index:0}
+.clip canvas.wave{position:absolute;left:0;right:0;top:16px;bottom:2px;width:100%;height:auto;pointer-events:none;opacity:.8;z-index:0}
 .lane-tools{display:flex;gap:3px;margin-top:2px}
 .lane-tools button{width:20px;height:18px;padding:0;font-size:9px;line-height:16px;border-radius:4px;background:#0d1626}
 .lane-tools button.on{border-color:var(--warn);color:var(--warn)}
@@ -501,7 +508,7 @@ body.fullscreen-stage .inspector{display:none}
 <script>
 (function(){
   'use strict';
-  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null };
+  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
   var el = function(id){ return document.getElementById(id); };
   var stage = el('stage');
   var tracksEl = el('tracks');
@@ -615,6 +622,13 @@ body.fullscreen-stage .inspector{display:none}
     for (var i=0;i<state.assets.length;i++) if (state.assets[i].id === id) return state.assets[i];
     return null;
   }
+  function replaceTypeCompatible(found, asset){
+    if (!found || !asset || asset.exists === false) return false;
+    var kind = found.clip.kind;
+    if (kind === 'caption' || kind === 'data' || kind === 'scene' || kind === 'timeline') return false;
+    if (kind === 'audio') return asset.kind === 'audio' || asset.kind === 'video';
+    return asset.kind === 'video' || asset.kind === 'image' || asset.kind === 'svg';
+  }
 
   function updateHistory(body){
     if (!body) return;
@@ -716,6 +730,26 @@ body.fullscreen-stage .inspector{display:none}
     sorted.forEach(function(lane){
       var row = document.createElement('div');
       row.className = 'lane' + (lane.enabled === false ? ' hidden-lane' : '') + (lane.locked ? ' locked-lane' : '');
+      var laneHeight = Number(state.laneHeights[lane.id]) || 0;
+      if (laneHeight >= 30){
+        row.style.height = laneHeight + 'px';
+      }
+      var resize = document.createElement('div');
+      resize.className = 'lane-resize';
+      resize.title = t('Drag to resize the lane');
+      resize.addEventListener('pointerdown', function(event){
+        event.stopPropagation();
+        event.preventDefault();
+        state.dragging = {
+          type: 'lane-height',
+          laneId: lane.id,
+          node: row,
+          startY: event.clientY,
+          originHeight: row.getBoundingClientRect().height,
+          moved: false
+        };
+      });
+      row.appendChild(resize);
       var label = document.createElement('div');
       label.className = 'lane-label';
       label.innerHTML = '<b>' + escapeHtml(lane.name || lane.id) + '</b><small>' + lane.type + ' · ' + lane.clips.length + ' clip(s)</small>';
@@ -779,6 +813,7 @@ body.fullscreen-stage .inspector{display:none}
         block.className = 'clip ' + clip.kind + (isSelected ? ' selected' : '') + (clip.enabled === false ? ' disabled' : '');
         block.style.left = (clip.start * rate) + 'px';
         block.style.width = Math.max(4, clip.duration * rate) + 'px';
+        if (laneHeight >= 30) block.style.height = Math.max(34, laneHeight - 10) + 'px';
         block.dataset.clipId = clip.id;
         block.title = clip.id + ' · ' + clip.kind + ' · ' + clip.start.toFixed(3) + 's + ' + clip.duration.toFixed(3) + 's' +
           (clip.speed !== 1 ? ' · ' + clip.speed.toFixed(2) + '×' : '') +
@@ -2403,6 +2438,23 @@ body.fullscreen-stage .inspector{display:none}
     importBtn.onclick = function(){ el('asset-file').click(); };
     toolbar.appendChild(importBtn);
     box.appendChild(toolbar);
+    if (state.replaceArmed){
+      var armed = clipById(state.replaceArmed);
+      var banner = document.createElement('div');
+      banner.className = 'replace-banner';
+      if (!armed){
+        state.replaceArmed = null;
+      } else {
+        banner.innerHTML = '<span>' + escapeHtml(t('Replacing source of ')) + '<b>' + escapeHtml(armed.clip.label || armed.clip.id) + '</b> — ' + escapeHtml(t('click ↔ on an asset below')) + '</span>';
+        var cancel = document.createElement('button');
+        cancel.textContent = '✕';
+        cancel.className = 'danger';
+        cancel.title = t('Cancel replace');
+        cancel.onclick = function(){ state.replaceArmed = null; renderInspector(); };
+        banner.appendChild(cancel);
+        box.appendChild(banner);
+      }
+    }
     if (!state.assets.length){
       box.appendChild(htmlNode('<div class="inspector-empty">No assets yet. Import images, video, audio or fonts — they are copied into the project asset layout and registered in the VHTML model.</div>'));
       return;
@@ -2442,6 +2494,25 @@ body.fullscreen-stage .inspector{display:none}
       add.title = 'Add to timeline at playhead';
       add.onclick = function(event){ event.stopPropagation(); addAssetToTimeline(asset.id); };
       card.appendChild(thumb); card.appendChild(meta); card.appendChild(add);
+      if (state.replaceArmed && asset.exists !== false && replaceTypeCompatible(clipById(state.replaceArmed), asset)){
+        var swap = document.createElement('button');
+        swap.className = 'add swap';
+        swap.textContent = '↔';
+        swap.title = t('Replace the armed clip source with this asset (timing kept)');
+        swap.onclick = function(event){
+          event.stopPropagation();
+          var target = clipById(state.replaceArmed);
+          if (!target) return;
+          edit([{ op:'clip.replace', clipId:target.clip.id, ref:asset.id, keepTiming:'in-out' }])
+            .then(function(){
+              toast(t('Source replaced — timing kept'));
+              state.replaceArmed = null;
+              renderInspector();
+            })
+            .catch(function(){});
+        };
+        card.appendChild(swap);
+      }
       card.onclick = function(){ state.assetSelected = asset.id; renderInspector(); };
       card.addEventListener('dragstart', function(event){
         event.dataTransfer.setData('application/x-vhtml-asset', asset.id);
@@ -2652,6 +2723,38 @@ body.fullscreen-stage .inspector{display:none}
     add.textContent = '＋ Cue at playhead';
     add.onclick = addCaptionAtPlayhead;
     box.appendChild(add);
+
+    var importTitle = document.createElement('div');
+    importTitle.className = 'section-title';
+    importTitle.textContent = t('Import captions (SRT / WebVTT)');
+    box.appendChild(importTitle);
+    var importArea = document.createElement('textarea');
+    importArea.className = 'caption-import';
+    importArea.placeholder = '1\\n00:00:01,000 --> 00:00:03,500\\nHello timeline\\n\\n2\\n00:00:04,000 --> 00:00:06,000\\nSecond cue';
+    importArea.rows = 5;
+    box.appendChild(importArea);
+    var importBtn = document.createElement('button');
+    importBtn.textContent = t('⤓ Import cues');
+    importBtn.title = t('Parse SRT, WebVTT or cue JSON and add every cue to the caption lane at its original timestamps');
+    importBtn.onclick = function(){
+      var text = importArea.value;
+      if (!text.trim()) return toast(t('Paste SRT / WebVTT text first'), true);
+      importBtn.disabled = true;
+      api('/api/captions/import', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ text:text }) })
+        .then(function(body){
+          if (!body.ok){
+            toast(body.error || body.message || 'Import failed', true);
+            return;
+          }
+          toast(t('Imported ') + body.added + t(' cue(s)'));
+          importArea.value = '';
+          return applyProjectResponse(body);
+        })
+        .catch(function(error){ toast(error.message, true); })
+        .then(function(){ importBtn.disabled = false; });
+    };
+    box.appendChild(importBtn);
+    box.appendChild(htmlNode('<div class="hint">' + t('Cues land on the caption lane at their original timestamps; a caption lane is created when missing.') + '</div>'));
 
     var styleLane = captionLane();
     var styleTitle = document.createElement('div');
@@ -2880,7 +2983,7 @@ body.fullscreen-stage .inspector{display:none}
   function drawWaveCanvas(canvas, clip, peaks){
     var rate = pps();
     var width = Math.max(2, Math.round(clip.duration * rate));
-    var height = 18;
+    var height = Math.max(18, Math.min(72, (canvas.parentElement ? canvas.parentElement.offsetHeight - 16 : 18)));
     var dpr = window.devicePixelRatio || 1;
     if (canvas.width !== Math.round(width * dpr) || canvas.height !== Math.round(height * dpr)){
       canvas.width = Math.round(width * dpr);
@@ -2947,6 +3050,16 @@ body.fullscreen-stage .inspector{display:none}
       ctxItem(menu, t('Copy'), 'Ctrl+C', function(){ copySelected(false); });
       ctxItem(menu, t('Cut'), 'Ctrl+X', function(){ copySelected(true); }, locked);
       ctxItem(menu, t('Paste at playhead'), 'Ctrl+V', function(){ pasteClipboard(); });
+      if (selected.length >= 2){
+        ctxItem(menu, t('Link clips'), '', function(){
+          edit([{ op:'clip.link', clipIds:selected }]).then(function(){ toast(t('Clips linked — they move together')); }).catch(function(){});
+        }, locked);
+      }
+      if (linkedPartnerIds({ clip: clip, lane: lane }).length){
+        ctxItem(menu, t('Unlink'), '', function(){
+          edit([{ op:'clip.unlink', clipId:clip.id }]).then(function(){ toast(t('Clip unlinked')); }).catch(function(){});
+        }, locked);
+      }
       ctxSep(menu);
       ctxItem(menu, t('Speed 0.25×'), '', function(){ setClipSpeed(selected, 0.25); }, locked);
       ctxItem(menu, t('Speed 0.5×'), '', function(){ setClipSpeed(selected, 0.5); }, locked);
@@ -2960,9 +3073,22 @@ body.fullscreen-stage .inspector{display:none}
         if (clip.hasTimeRemap) ctxItem(menu, t('Clear speed ramp'), '', function(){ edit([{ op:'clip.timeremap.clear', clipId:clip.id }]).catch(function(){}); });
         ctxItem(menu, t('Freeze frame at playhead'), '', function(){ freezeAtPlayhead(clip); }, locked);
       }
-      if (clip.kind === 'video'){
+      if (clip.kind === 'video' || clip.kind === 'audio'){
         ctxSep(menu);
-        ctxItem(menu, t('Detach audio'), '', function(){ edit([{ op:'clip.detachAudio', clipId:clip.id }]).then(function(){ toast(t('Audio detached to its own lane')); }).catch(function(){}); }, selected.length !== 1 || locked);
+        ctxItem(menu, t('Slip source (Ctrl+drag)'), '', function(){
+          toast(t('Hold Ctrl and drag the clip body to slip its source window'));
+        }, clip.hasTimeRemap || Boolean(clip.freeze));
+        if (clip.kind === 'video' || clip.kind === 'audio'){
+          ctxItem(menu, t('Replace source from Assets…'), '', function(){
+            state.replaceArmed = clip.id;
+            state.tab = 'assets';
+            renderInspector();
+            toast(t('Pick an asset in the Assets tab to replace the source'));
+          }, selected.length !== 1 || locked);
+        }
+        if (clip.kind === 'video'){
+          ctxItem(menu, t('Detach audio'), '', function(){ edit([{ op:'clip.detachAudio', clipId:clip.id }]).then(function(){ toast(t('Audio detached to its own lane')); }).catch(function(){}); }, selected.length !== 1 || locked);
+        }
       }
       ctxSep(menu);
       ctxItem(menu, clip.enabled === false ? 'Enable clip' : 'Disable clip', '', function(){ toggleClipEnabled(selected); }, locked);
@@ -3028,6 +3154,14 @@ body.fullscreen-stage .inspector{display:none}
       ctxItem(menu, t('Set In point here'), 'I', function(){ state.inPoint = at; renderRangeBand(); });
       ctxItem(menu, t('Set Out point here'), 'O', function(){ state.outPoint = at; renderRangeBand(); });
       ctxItem(menu, t('Clear In & Out'), '', function(){ state.inPoint = null; state.outPoint = null; renderRangeBand(); });
+      if (state.inPoint !== null && state.outPoint !== null && state.outPoint > state.inPoint){
+        ctxItem(menu, t('Ripple cut In→Out (all lanes)'), '', function(){
+          var laneIds = state.model.lanes.filter(function(lane){ return !lane.locked; }).map(function(lane){ return lane.id; });
+          edit([{ op:'timeline.rippleCut', trackIds:laneIds, start:state.inPoint, end:state.outPoint }])
+            .then(function(){ toast(t('Range ripple-cut from every lane')); })
+            .catch(function(error){ toast(error.message, true); });
+        });
+      }
       ctxSep(menu);
       ctxItem(menu, t('Paste here'), 'Ctrl+V', function(){ pasteClipboard(at); });
     } else if (target.type === 'lane'){
@@ -4256,6 +4390,23 @@ body.fullscreen-stage .inspector{display:none}
       if (found.lane.locked){ toast('Lane is locked', true); return; }
       if (state.pickElement) setPickMode(false);
       else clearElementSelection();
+      var handle = event.target.dataset.handle;
+      var slippable = (found.clip.kind === 'video' || found.clip.kind === 'audio') && !found.clip.freeze && !found.clip.hasTimeRemap;
+      if ((event.ctrlKey || event.metaKey) && slippable && !handle){
+        // Ctrl+drag = slip the source window (Premiere-style). The ctrl-click
+        // selection toggle is deferred to pointerup when nothing moved.
+        state.dragging = {
+          type: 'slip',
+          clip: found.clip,
+          lane: found.lane,
+          startX: event.clientX,
+          originalSourceIn: Number(found.clip.sourceIn || 0),
+          moved: false
+        };
+        event.preventDefault();
+        try { clipNode.setPointerCapture(event.pointerId); } catch (error) {}
+        return;
+      }
       if (event.shiftKey || event.ctrlKey || event.metaKey){
         toggleSelection(found.clip.id, true);
       } else if (selectionIds().indexOf(found.clip.id) < 0){
@@ -4268,7 +4419,6 @@ body.fullscreen-stage .inspector{display:none}
       if (!liveNode) return;
       clipNode = liveNode;
       updateSelectionBox();
-      var handle = event.target.dataset.handle;
       var startX = event.clientX;
       var groupIds = selectionIds().slice();
       // Linked clips ride along with a drag (CapCut-style AV pairs).
@@ -4365,6 +4515,25 @@ body.fullscreen-stage .inspector{display:none}
         var nextTime = Math.max(0, Math.min(state.model.duration, snap(markerDrag.originTime + deltaT)));
         markerDrag.previewTime = nextTime;
         showDragTip('Marker @ ' + fmtTime(nextTime), event.clientX, event.clientY);
+        return;
+      }
+      if (state.dragging.type === 'lane-height'){
+        var heightDrag = state.dragging;
+        var nextHeight = Math.max(30, Math.min(200, Math.round(heightDrag.originHeight + (event.clientY - heightDrag.startY))));
+        if (Math.abs(event.clientY - heightDrag.startY) > 2) heightDrag.moved = true;
+        heightDrag.previewHeight = nextHeight;
+        heightDrag.node.style.height = nextHeight + 'px';
+        showDragTip(t('Lane height ') + nextHeight + 'px', event.clientX, event.clientY);
+        return;
+      }
+      if (state.dragging.type === 'slip'){
+        var slipDrag = state.dragging;
+        var slipDelta = (event.clientX - slipDrag.startX) / pps();
+        if (Math.abs(slipDelta) > 0.005) slipDrag.moved = true;
+        if (!slipDrag.moved) return;
+        slipDrag.previewDelta = slipDelta;
+        var slipIn = Math.max(0, slipDrag.originalSourceIn + slipDelta * (slipDrag.clip.speed || 1));
+        showDragTip(t('Slip · source in ') + fmtTime(slipIn), event.clientX, event.clientY);
         return;
       }
       if (state.dragging.type === 'volume-dot'){
@@ -4465,6 +4634,23 @@ body.fullscreen-stage .inspector{display:none}
       clearDrop();
       showSnapGuide(null);
       hideDragTip();
+      if (drag.type === 'slip'){
+        if (drag.moved && drag.previewDelta){
+          edit([{ op:'clip.slip', clipId:drag.clip.id, delta:Number(drag.previewDelta.toFixed(6)) }])
+            .then(function(){ toast(t('Source window slipped')); }).catch(function(){});
+        } else if (!drag.moved){
+          toggleSelection(drag.clip.id, true);
+          renderTimeline(); renderInspector();
+        }
+        return;
+      }
+      if (drag.type === 'lane-height'){
+        if (!drag.moved || !drag.previewHeight) return;
+        state.laneHeights[drag.laneId] = drag.previewHeight;
+        try { localStorage.setItem('vhtml-lane-heights', JSON.stringify(state.laneHeights)); } catch (error) {}
+        renderTimeline();
+        return;
+      }
       if (drag.type === 'lane-reorder'){
         var rows = tracksEl.querySelectorAll('.lane');
         for (var r=0;r<rows.length;r++) rows[r].classList.remove('drop-above','drop-below');
@@ -4743,6 +4929,7 @@ body.fullscreen-stage .inspector{display:none}
           return;
         }
         if (state.pickElement){ setPickMode(false); return; }
+        if (state.replaceArmed){ state.replaceArmed = null; renderInspector(); return; }
         if (state.element){
           clearElementSelection();
           state.tab = 'props';
