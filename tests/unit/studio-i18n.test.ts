@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import { STUDIO_LOCALES, detectStudioLanguage } from '@sdkwork/vhtml-studio/i18n';
 import { STUDIO_HTML } from '@sdkwork/vhtml-studio/client';
+import { VISUAL_EFFECT_TYPES, AUDIO_EFFECT_TYPES } from '@sdkwork/vhtml-core/model';
 
 test('i18n dictionaries cover both languages with key parity', () => {
   const languages = Object.keys(STUDIO_LOCALES);
@@ -36,4 +38,33 @@ test('STUDIO_HTML embeds the locale dictionary and i18n runtime', () => {
   assert.ok(STUDIO_HTML.includes('data-i18n'), 'static i18n attributes present');
   assert.ok(STUDIO_HTML.includes('applyStaticI18n'), 'boot pass present');
   assert.ok(STUDIO_HTML.includes("vhtml-lang"), 'language persistence key');
+});
+
+test('every inline script in STUDIO_HTML parses (template literals escape tsc)', () => {
+  const scripts = [...STUDIO_HTML.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+  assert.ok(scripts.length >= 2, 'at least the i18n bootstrap and the app script');
+  for (const [index, source] of scripts.entries()) {
+    // Compiling (not running) catches syntax errors tsc cannot see inside the
+    // STUDIO_HTML template literal — one unbalanced paren used to blank the UI.
+    assert.doesNotThrow(() => new vm.Script(source, { filename: `studio-inline-${index}.js` }),
+      `inline script #${index} must parse`);
+  }
+});
+
+test('Studio UI offers every runtime visual effect type', () => {
+  for (const type of VISUAL_EFFECT_TYPES) {
+    assert.ok(STUDIO_HTML.includes(`'${type}'`),
+      `visual effect "${type}" is implemented by the runtime but missing from the Studio catalog`);
+  }
+});
+
+test('Studio UI offers the parameterised audio effect types', () => {
+  // 'fade' is authored through the clip fadeIn/fadeOut fields, 'normalize'
+  // through export loudness — neither takes per-effect params today.
+  const reserved = new Set(['fade', 'normalize']);
+  for (const type of AUDIO_EFFECT_TYPES) {
+    if (reserved.has(type)) continue;
+    assert.ok(STUDIO_HTML.includes(`'${type}'`),
+      `audio effect "${type}" is implemented by the mixer but missing from the Studio palette`);
+  }
 });

@@ -1,5 +1,31 @@
 # Changelog
 
+## 1.1.4
+
+### Studio: professional-editing polish (CapCut alignment)
+
+- **Fixed: blank Studio UI.** Five unbalanced-paren syntax errors inside the
+  embedded `STUDIO_HTML` script (invisible to `tsc` because the UI ships as a
+  template literal) aborted the whole boot script — nothing loaded. New unit
+  test compiles every inline script with `node:vm` so the class of failure is
+  caught on every run; catalog tests pin the Studio effect palette to the
+  runtime's `VISUAL_EFFECT_TYPES` / `AUDIO_EFFECT_TYPES`.
+- **Fixed: Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y were unreachable** — the global
+  Ctrl-key early return in `setupKeys` ran before the undo/redo handlers.
+- **Effect catalog completed to the runtime surface**: visual effects gain
+  `chroma-key` (green screen: color/tolerance/spill), `color-overlay` and
+  `css`; the audio palette gains **gain, high-pass, low-pass, compressor,
+  echo/reverb, pitch shift** (defaults matching the export mixer) alongside
+  ducking. Friendly labels with zh-CN translations; effect ids gain a call
+  counter so batch adds never collide.
+- **Batch effect application** (CapCut-style): adding an effect with a
+  multi-selection lands on every selected unlocked visual clip.
+- **Video filmstrip thumbnails**: clips render a poster-tile strip across
+  their source window (server poster cache makes re-renders cheap) instead of
+  a single start frame.
+- **Ctrl+wheel timeline zoom** now exists (the docs already promised it),
+  anchored at the pointer.
+
 ## 1.1.3
 
 ### Deterministic frame cache (RFC-0016)

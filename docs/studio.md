@@ -121,7 +121,8 @@ validated Core Model edit (undoable, saved atomically).
 ![Ruler context menu](./screenshots/studio-ruler-menu.png)
 - **Markers** (`M`) appear as flags on the ruler; In (`I`) / Out (`O`) points
   highlight the working range and feed the export dialog.
-- Video clips show a poster frame from `/api/media/poster`; audio-capable clips
+- Video clips show a **filmstrip** of poster tiles spread across the clip's
+  source window (`/api/media/poster`, disk-cached); audio-capable clips
   draw a real waveform from `/api/media/peaks` (FFmpeg-decoded, cached under
   `.vhtml/cache/studio-media/`).
 - **Fade handles**: drag the clip edges (or edit the fields) to set
@@ -136,9 +137,12 @@ validated Core Model edit (undoable, saved atomically).
 - **Keyframe diamonds drag**: drag a diamond horizontally to retime that
   keyframe (`clip.set animations`, clamped to the clip and sorted on commit).
 - **Audio effects**: the Properties panel lists a clip's `audio-effect`s and
-  adds sidechain **ducking** (sidechain lane, threshold, reduction, attack,
-  release, hold) via `effect.add { audio: true }`; the export mixer evaluates
-  the same envelope.
+  adds effects from the mixer palette — **gain, high-pass, low-pass,
+  compressor, echo/reverb, pitch shift** (each seeded with runtime-matched
+  default parameters) plus sidechain **ducking** (sidechain lane, threshold,
+  reduction, attack, release, hold) via `effect.add { audio: true }`; the
+  export mixer evaluates the same envelope. With a multi-selection active, a
+  newly added effect lands on every selected clip.
 - **Speed curve editor**: clips with a time remap get an interactive SVG
   curve (X = clip time, Y = source position) with draggable points, per-segment
   average speed labels, click-to-add (monotonicity-clamped, linearly
@@ -182,10 +186,11 @@ Select a clip to edit everything the model supports:
 - captions: text;
 - **Keyframes**: add per-property keyframe tracks (opacity, position, scale,
   rotation) at the playhead, then edit each keyframe's time, value and easing;
-- **Effects**: 16 effect types (blur, brightness, contrast, saturate,
+- **Effects**: 19 effect types (blur, brightness, contrast, saturate,
   grayscale, sepia, invert, hue-rotate, drop-shadow, glow, grain, vignette,
-  tint, rounded, mask, filter) with per-parameter editing, enable/disable and
-  remove.
+  tint, color-overlay, chroma-key, rounded, mask, filter, css) with friendly
+  labels, per-parameter editing, enable/disable and remove. With a
+  multi-selection, adding an effect applies it to the whole selection.
 
 ## Assets
 

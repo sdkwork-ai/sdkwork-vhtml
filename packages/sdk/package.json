@@ -1,6 +1,6 @@
 {
   "name": "@sdkwork/vhtml-sdk",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "Code-first VHTML authoring SDK: defineVideo, scenes, lanes, clips, animations, transitions, effects, captions, generation and outputs.",
   "type": "module",
   "license": "MIT",

@@ -191,6 +191,10 @@ main{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;min-he
 .clip.thumb{background-size:cover;background-position:center;text-shadow:0 1px 3px #000}
 .clip.thumb:after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,rgba(4,10,18,.05),rgba(4,10,18,.48));pointer-events:none}
 .clip.thumb .label,.clip.thumb .sub{position:relative;z-index:1}
+.clip .filmstrip{position:absolute;inset:0;display:flex;pointer-events:none}
+.clip .filmstrip>div{flex:1 1 0;min-width:0;background-size:cover;background-position:center}
+.clip.thumb:has(.filmstrip){background-image:none}
+.clip .filmstrip~.label,.clip .filmstrip~.sub{position:relative;z-index:1;text-shadow:0 1px 3px #000}
 .clip .sub{font-size:9px;opacity:.72;white-space:nowrap;overflow:hidden;pointer-events:none}
 .clip .handle{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize;background:rgba(255,255,255,.12);opacity:0;transition:.1s}
 .clip:hover .handle{opacity:1}
@@ -780,14 +784,29 @@ body.fullscreen-stage .inspector{display:none}
           (clip.speed !== 1 ? ' · ' + clip.speed.toFixed(2) + '×' : '') +
           (clip.hasTimeRemap ? ' · speed ramp' : '');
         var asset = clip.ref ? (assetById(clip.ref) || assetById(clip.ref.replace(/^(asset|gen):/, ''))) : null;
+        var filmstrip = null;
         if (asset && (asset.kind === 'image' || asset.kind === 'svg') && asset.url && asset.exists !== false){
           block.classList.add('thumb');
           block.style.backgroundImage = 'linear-gradient(180deg,rgba(8,15,26,.15),rgba(8,15,26,.55)), url("' + asset.url + '")';
         } else if (asset && asset.kind === 'video' && asset.exists !== false && clip.kind === 'video'){
-          var posterKey = asset.id + '@' + (clip.sourceIn || 0).toFixed(1);
-          if (!state.posters[posterKey]) state.posters[posterKey] = '/api/media/poster?asset=' + encodeURIComponent(asset.id) + '&t=' + (clip.sourceIn || 0).toFixed(1);
+          // Filmstrip: spread poster tiles across the clip's source window
+          // (server-side poster cache makes repeated renders cheap).
+          var clipWidthPx = Math.max(4, clip.duration * rate);
+          var tiles = Math.max(1, Math.min(10, Math.round(clipWidthPx / 72)));
+          var sourceSpan = clip.duration * (clip.speed || 1);
+          filmstrip = document.createElement('div');
+          filmstrip.className = 'filmstrip';
+          for (var tileIndex = 0; tileIndex < tiles; tileIndex++){
+            var tileTime = (clip.sourceIn || 0) + ((tileIndex + 0.5) / tiles) * sourceSpan;
+            var tileKey = asset.id + '@' + tileTime.toFixed(1);
+            if (!state.posters[tileKey]){
+              state.posters[tileKey] = '/api/media/poster?asset=' + encodeURIComponent(asset.id) + '&t=' + tileTime.toFixed(1);
+            }
+            var tile = document.createElement('div');
+            tile.style.backgroundImage = 'url("' + state.posters[tileKey] + '")';
+            filmstrip.appendChild(tile);
+          }
           block.classList.add('thumb');
-          block.style.backgroundImage = 'linear-gradient(180deg,rgba(8,15,26,.2),rgba(8,15,26,.6)), url("' + state.posters[posterKey] + '")';
         }
         var chips = [];
         if (clip.speed !== 1) chips.push(clip.speed.toFixed(2).replace(/\\.?0+$/,'') + '×');
@@ -795,6 +814,7 @@ body.fullscreen-stage .inspector{display:none}
         if (clip.muted) chips.push('muted');
         if (clip.freeze !== undefined && clip.freeze !== null) chips.push('freeze');
         block.innerHTML = '<div class="label">' + escapeHtml(clip.label) + '</div><div class="sub">' + clip.kind + ' · ' + clip.duration.toFixed(2) + 's</div><div class="handle left" data-handle="left"></div><div class="handle right" data-handle="right"></div>';
+        if (filmstrip) block.appendChild(filmstrip);
         if (chips.length){
           var chip = document.createElement('div');
           chip.className = 'badge-chip';
@@ -984,7 +1004,7 @@ body.fullscreen-stage .inspector{display:none}
       ].forEach(function(preset){
         var button = document.createElement('button');
         button.textContent = preset.label;
-        button.title = t('Apply a keyframed speed ramp (') + preset.label + t(') over the whole clip';
+        button.title = t('Apply a keyframed speed ramp (') + preset.label + t(') over the whole clip');
         button.onclick = function(){
           var sourceStart = clip.sourceIn || 0;
           var sourceEnd = sourceStart + clip.duration * clip.speed;
@@ -1069,7 +1089,7 @@ body.fullscreen-stage .inspector{display:none}
       if (clip.kind === 'video'){
         var detach = document.createElement('button');
         detach.textContent = 'Detach audio to its own lane';
-        detach.onclick = function(){ edit([{ op:'clip.detachAudio', clipId:clip.id }]).then(function(){ toast(t('Audio detached'); }).catch(function(){}); };
+        detach.onclick = function(){ edit([{ op:'clip.detachAudio', clipId:clip.id }]).then(function(){ toast(t('Audio detached')); }).catch(function(){}); };
         box.appendChild(detach);
       }
       renderAudioEffectsSection(box, clip);
@@ -1194,7 +1214,7 @@ body.fullscreen-stage .inspector{display:none}
       enabled: true,
     };
     edit([{ op:'animation.add', animation:created, clipId:clip.id }])
-      .then(function(){ toast(t('Volume envelope started — drag the green points'); })
+      .then(function(){ toast(t('Volume envelope started — drag the green points')); })
       .catch(function(){});
   }
 
@@ -1217,7 +1237,7 @@ body.fullscreen-stage .inspector{display:none}
     var remaining = animation.keyframes.length - 1;
     if (remaining <= 0){
       edit([{ op:'animation.remove', animationId:animId, clipId:clip.id }])
-        .then(function(){ toast(t('Volume envelope removed'); }).catch(function(){});
+        .then(function(){ toast(t('Volume envelope removed')); }).catch(function(){});
       return;
     }
     var nextAnimations = clip.animations.map(function(candidate){
@@ -1250,7 +1270,7 @@ body.fullscreen-stage .inspector{display:none}
     (clip.audioEffects || []).forEach(function(fx){
       var head = document.createElement('div');
       head.className = 'transition-row';
-      head.innerHTML = '<b>' + escapeHtml(fx.type) + '</b>';
+      head.innerHTML = '<b>' + escapeHtml(effectLabel(fx.type)) + '</b><small style="margin-left:6px;opacity:.6">' + escapeHtml(fx.type) + '</small>';
       var remove = document.createElement('button');
       remove.textContent = '✕';
       remove.className = 'danger';
@@ -1285,12 +1305,32 @@ body.fullscreen-stage .inspector{display:none}
     empty.value = '';
     empty.textContent = 'Choose…';
     add.appendChild(empty);
+    Object.keys(AUDIO_EFFECT_CATALOG).forEach(function(type){
+      var option = document.createElement('option');
+      option.value = type;
+      option.textContent = t(AUDIO_EFFECT_CATALOG[type].label) + ' (' + type + ')';
+      add.appendChild(option);
+    });
     var ducking = document.createElement('option');
     ducking.value = 'ducking';
-    ducking.textContent = 'ducking (sidechain)';
+    ducking.textContent = t('Ducking (sidechain)');
     add.appendChild(ducking);
     add.addEventListener('change', function(){
       if (!add.value) return;
+      if (AUDIO_EFFECT_CATALOG[add.value]){
+        var preset = AUDIO_EFFECT_CATALOG[add.value];
+        var effect = {
+          id: 'fx-audio-' + add.value + '-' + Date.now().toString(36),
+          type: add.value,
+          params: JSON.parse(JSON.stringify(preset.params)),
+          enabled: true,
+        };
+        edit([{ op:'effect.add', clipId:clip.id, effect:effect, audio:true }])
+          .then(function(){ toast(t('Audio effect added: ') + effectLabel(add.value)); })
+          .catch(function(){});
+        add.value = '';
+        return;
+      }
       var audioLanes = state.model.lanes.filter(function(lane){ return lane.type === 'audio'; });
       if (!audioLanes.length){
         toast('Ducking needs a sidechain audio lane', true);
@@ -1417,7 +1457,7 @@ body.fullscreen-stage .inspector{display:none}
           return { at: Number(keyframe.at.toFixed(6)), source: Number(keyframe.source.toFixed(6)), easing: keyframe.easing };
         }),
         easing: clip.timeRemapEasing || 'linear',
-      }]).then(function(){ toast(t('Speed curve updated'); }).catch(function(){});
+      }]).then(function(){ toast(t('Speed curve updated')); }).catch(function(){});
     }
     function attachDrag(circle, index){
       circle.addEventListener('pointerdown', function(event){
@@ -1731,9 +1771,46 @@ body.fullscreen-stage .inspector{display:none}
     'grain': { params:{ opacity:0.09, size:3 } },
     'vignette': { params:{ amount:0.45 } },
     'tint': { params:{ color:'#6ee7ff', opacity:0.22, blend:'multiply' } },
+    'color-overlay': { params:{ color:'#6ee7ff', opacity:0.35, blend:'normal' } },
+    'chroma-key': { params:{ color:'#00ff00', tolerance:0.25, spill:0.15 } },
     'rounded': { params:{ radius:'24px' } },
     'mask': { params:{ shape:'inset', inset:'5%' } },
     'filter': { params:{ value:'none' } },
+    'css': { params:{ style:'' } },
+  };
+  var EFFECT_LABELS = {
+    'blur': 'Blur',
+    'brightness': 'Brightness',
+    'contrast': 'Contrast',
+    'saturate': 'Saturation',
+    'grayscale': 'Grayscale',
+    'sepia': 'Sepia',
+    'invert': 'Invert',
+    'hue-rotate': 'Hue rotate',
+    'drop-shadow': 'Drop shadow',
+    'glow': 'Glow',
+    'grain': 'Grain',
+    'vignette': 'Vignette',
+    'tint': 'Tint',
+    'color-overlay': 'Color overlay',
+    'chroma-key': 'Chroma key (green screen)',
+    'rounded': 'Rounded corners',
+    'mask': 'Mask',
+    'filter': 'Custom filter',
+    'css': 'Custom CSS',
+  };
+  function effectLabel(type){
+    if (EFFECT_LABELS[type]) return t(EFFECT_LABELS[type]);
+    if (AUDIO_EFFECT_CATALOG[type]) return t(AUDIO_EFFECT_CATALOG[type].label);
+    return type;
+  }
+  var AUDIO_EFFECT_CATALOG = {
+    'gain': { params:{ gain:1.5 }, label:'Gain boost' },
+    'highpass': { params:{ frequency:120 }, label:'High-pass (de-hum)' },
+    'lowpass': { params:{ frequency:8000 }, label:'Low-pass (soften)' },
+    'compressor': { params:{ threshold:0.125, ratio:4, attack:20, release:250 }, label:'Compressor' },
+    'echo': { params:{ inGain:0.8, outGain:0.9, delay:120, decay:0.35 }, label:'Echo / reverb' },
+    'pitch': { params:{ semitones:0 }, label:'Pitch shift (voice)' },
   };
 
   function renderEffectsSection(box, clip){
@@ -1744,7 +1821,7 @@ body.fullscreen-stage .inspector{display:none}
     (clip.effects || []).forEach(function(fx){
       var head = document.createElement('div');
       head.className = 'transition-row';
-      head.innerHTML = '<b>' + escapeHtml(fx.type) + '</b>';
+      head.innerHTML = '<b>' + escapeHtml(effectLabel(fx.type)) + '</b><small style="margin-left:6px;opacity:.6">' + escapeHtml(fx.type) + '</small>';
       var enable = document.createElement('button');
       enable.textContent = fx.enabled ? 'On' : 'Off';
       enable.style.marginLeft = 'auto';
@@ -1808,11 +1885,23 @@ body.fullscreen-stage .inspector{display:none}
     Object.keys(EFFECT_CATALOG).forEach(function(type){
       var option = document.createElement('option');
       option.value = type;
-      option.textContent = type;
+      option.textContent = effectLabel(type);
       add.appendChild(option);
     });
     add.addEventListener('change', function(){
-      if (add.value) addEffect(clip, add.value);
+      if (!add.value) return;
+      // CapCut-style batch apply: with a multi-selection the effect lands on
+      // every selected visual clip, not just the primary one.
+      var targets = selectionIds().filter(function(id){
+        var found = clipById(id);
+        return found && isVisualClip(found.clip) && !found.lane.locked;
+      });
+      if (targets.length <= 1) targets = [clip.id];
+      targets.forEach(function(id){
+        var entry = clipById(id);
+        if (entry) addEffect(entry.clip, add.value);
+      });
+      if (targets.length > 1) toast(effectLabel(add.value) + t(' applied to ') + targets.length + t(' clip(s)'));
       add.value = '';
     });
     addWrap.appendChild(add);
@@ -2216,7 +2305,7 @@ body.fullscreen-stage .inspector{display:none}
           event.preventDefault();
           event.stopPropagation();
           setPickMode(false);
-          toast(t('Editing element — apply changes in the Element tab');
+          toast(t('Editing element — apply changes in the Element tab'));
         }
       }, true);
       doc.addEventListener('pointermove', function(event){
@@ -2421,7 +2510,7 @@ body.fullscreen-stage .inspector{display:none}
       applyBtn.title = 'Materialise every shot onto the timeline in order (append, 0.25s gap)';
       applyBtn.onclick = function(){
         edit([{ op:'storyboard.apply', at:'append', gap:0.25 }])
-          .then(function(){ toast(t('Storyboard applied to the timeline'); })
+          .then(function(){ toast(t('Storyboard applied to the timeline')); })
           .catch(function(error){ toast(error.message, true); });
       };
       toolbar.appendChild(applyBtn);
@@ -2670,16 +2759,17 @@ body.fullscreen-stage .inspector{display:none}
     edit([{ op:'clip.set', clipId:clip.id, props:{ transform:transform } }]);
   }
 
+  var effectIdCounter = 0;
   function addEffect(clip, type){
     var catalog = EFFECT_CATALOG[type];
     var effect = {
-      id: 'fx-' + type + '-' + Date.now().toString(36),
+      id: 'fx-' + type + '-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36),
       type: type,
       params: catalog ? JSON.parse(JSON.stringify(catalog.params)) : {},
       enabled: true
     };
     edit([{ op:'effect.add', clipId:clip.id, effect:effect }])
-      .then(function(){ toast(type + ' effect added'); })
+      .then(function(){ toast(effectLabel(type) + t(' effect added')); })
       .catch(function(){});
   }
 
@@ -2872,7 +2962,7 @@ body.fullscreen-stage .inspector{display:none}
       }
       if (clip.kind === 'video'){
         ctxSep(menu);
-        ctxItem(menu, t('Detach audio'), '', function(){ edit([{ op:'clip.detachAudio', clipId:clip.id }]).then(function(){ toast(t('Audio detached to its own lane'); }).catch(function(){}); }, selected.length !== 1 || locked);
+        ctxItem(menu, t('Detach audio'), '', function(){ edit([{ op:'clip.detachAudio', clipId:clip.id }]).then(function(){ toast(t('Audio detached to its own lane')); }).catch(function(){}); }, selected.length !== 1 || locked);
       }
       ctxSep(menu);
       ctxItem(menu, clip.enabled === false ? 'Enable clip' : 'Disable clip', '', function(){ toggleClipEnabled(selected); }, locked);
@@ -2892,12 +2982,12 @@ body.fullscreen-stage .inspector{display:none}
       if (clip.kind === 'timeline'){
         ctxSep(menu);
         ctxItem(menu, t('Unnest compound clip'), '', function(){
-          edit([{ op:'timeline.unnest', clipId:clip.id }]).then(function(){ toast(t('Compound clip flattened'); }).catch(function(){});
+          edit([{ op:'timeline.unnest', clipId:clip.id }]).then(function(){ toast(t('Compound clip flattened')); }).catch(function(){});
         }, selected.length !== 1 || locked);
       } else {
         ctxSep(menu);
         ctxItem(menu, t('Create compound clip (') + selected.length + ')', '', function(){
-          edit([{ op:'timeline.nest', clipIds:selected }]).then(function(){ toast(t('Compound clip created'); }).catch(function(){});
+          edit([{ op:'timeline.nest', clipIds:selected }]).then(function(){ toast(t('Compound clip created')); }).catch(function(){});
         }, locked);
       }
       ctxSep(menu);
@@ -2996,7 +3086,7 @@ body.fullscreen-stage .inspector{display:none}
   function freezeAtPlayhead(clip){
     var at = snap(state.time);
     if (at < clip.start || at > clip.start + clip.duration) return toast('Move the playhead inside the clip first', true);
-    edit([{ op:'clip.freeze', clipId:clip.id, sourceTime:at }]).then(function(){ toast(t('Clip frozen at the playhead'); }).catch(function(){});
+    edit([{ op:'clip.freeze', clipId:clip.id, sourceTime:at }]).then(function(){ toast(t('Clip frozen at the playhead')); }).catch(function(){});
   }
 
   function applySpeedRamp(clip, shape){
@@ -3017,7 +3107,7 @@ body.fullscreen-stage .inspector{display:none}
       ];
     }
     edit([{ op:'clip.timeremap', clipId:clip.id, keyframes:keyframes, easing:'ease-in-out' }])
-      .then(function(){ toast(t('Speed ramp applied'); }).catch(function(){});
+      .then(function(){ toast(t('Speed ramp applied')); }).catch(function(){});
   }
 
   function toggleClipEnabled(ids){
@@ -3343,7 +3433,7 @@ body.fullscreen-stage .inspector{display:none}
       position: el('cap-pos').value.trim(),
     };
     edit([{ op:'track.set', trackId:lane.id, props:{ captionStyle:buildCaptionStyle(style) } }])
-      .then(function(){ toast(t('Caption style saved'); }).catch(function(){});
+      .then(function(){ toast(t('Caption style saved')); }).catch(function(){});
   }
 
   function toggleGuides(){
@@ -3440,7 +3530,7 @@ body.fullscreen-stage .inspector{display:none}
     renderTimeline();
     var rate = pps();
     scroll.scrollLeft = Math.max(0, minStart * rate - 60);
-    toast(t('Zoomed to selection');
+    toast(t('Zoomed to selection'));
   }
 
   function setZoom(value, anchorClientX){
@@ -3532,7 +3622,7 @@ body.fullscreen-stage .inspector{display:none}
     ops.push({ op:'transition.add', trackId:draft.laneId, transition:transition });
     el('transition-modal').classList.remove('open');
     state.trDraft = null;
-    edit(ops).then(function(){ toast(t('Transition saved'); }).catch(function(){});
+    edit(ops).then(function(){ toast(t('Transition saved')); }).catch(function(){});
   }
 
   function isVisualClip(clip){
@@ -3928,7 +4018,7 @@ body.fullscreen-stage .inspector{display:none}
       state.selected = body.clip ? body.clip.id : state.selected;
       state.tab = 'props';
       renderTimeline(); renderInspector();
-      toast(t('Caption added');
+      toast(t('Caption added'));
     }).catch(function(error){ toast(error.message, true); });
   }
 
@@ -3984,7 +4074,7 @@ body.fullscreen-stage .inspector{display:none}
   function reloadProject(){
     pausePlayback();
     api('/api/reload', { method:'POST', headers:{'content-type':'application/json'}, body:'{}' })
-      .then(function(body){ clearElementSelection(); state.tab = 'props'; applyProjectResponse(body); toast(t('Reloaded external files from disk'); })
+      .then(function(body){ clearElementSelection(); state.tab = 'props'; applyProjectResponse(body); toast(t('Reloaded external files from disk')); })
       .catch(function(error){ toast(error.message, true); });
   }
 
@@ -4388,7 +4478,7 @@ body.fullscreen-stage .inspector{display:none}
         ordered.forEach(function(lane, index){
           if (lane.order !== index + 1) ops.push({ op:'track.set', trackId:lane.id, props:{ order:index + 1 } });
         });
-        if (ops.length) edit(ops).then(function(){ toast(t('Lane order updated'); }).catch(function(){});
+        if (ops.length) edit(ops).then(function(){ toast(t('Lane order updated')); }).catch(function(){});
         return;
       }
       if (drag.type === 'marquee'){
@@ -4442,7 +4532,7 @@ body.fullscreen-stage .inspector{display:none}
       if (drag.type === 'volume-dot'){
         if (!drag.moved || drag.previewValue === undefined) return;
         setVolumeKeyframe(drag.clip, drag.animId, drag.kfIndex, drag.previewTime, drag.previewValue)
-          .then(function(){ toast(t('Volume point updated'); }).catch(function(){});
+          .then(function(){ toast(t('Volume point updated')); }).catch(function(){});
         return;
       }
       if (drag.type === 'volume'){
@@ -4495,6 +4585,14 @@ body.fullscreen-stage .inspector{display:none}
       el('zoomlabel').textContent = state.zoom.toFixed(1) + '×';
       renderTimeline();
     });
+    // Ctrl/Cmd + wheel zooms the timeline anchored at the pointer (CapCut-style).
+    var scroll = el('timeline-scroll');
+    scroll.addEventListener('wheel', function(event){
+      if (!(event.ctrlKey || event.metaKey)) return;
+      event.preventDefault();
+      var factor = event.deltaY < 0 ? 1.12 : 1 / 1.12;
+      setZoom(state.zoom * factor, event.clientX);
+    }, { passive:false });
   }
 
   function resizeStage(){
@@ -4615,7 +4713,7 @@ body.fullscreen-stage .inspector{display:none}
         if (job.captions) links += ' · <a href="' + job.captions + '" download>captions</a>';
         if (job.report) links += ' · <a href="' + job.report + '" download>report</a>';
         el('exp-result').innerHTML = links;
-        toast(t('Export complete');
+        toast(t('Export complete'));
       } else if (job.status === 'failed'){
         state.exportJob = null;
         el('exp-result').textContent = 'Failed: ' + job.error;
@@ -4682,6 +4780,12 @@ body.fullscreen-stage .inspector{display:none}
       if ((event.ctrlKey || event.metaKey) && (event.key === '=' || event.key === '+')){ event.preventDefault(); setZoom(state.zoom * 1.25); return; }
       if ((event.ctrlKey || event.metaKey) && event.key === '-'){ event.preventDefault(); setZoom(state.zoom / 1.25); return; }
       if ((event.ctrlKey || event.metaKey) && event.key === '0'){ event.preventDefault(); fitTimeline(); return; }
+      if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')){
+        event.preventDefault();
+        if (event.shiftKey) redo(); else undo();
+        return;
+      }
+      if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || event.key === 'Y')){ event.preventDefault(); redo(); return; }
       if (event.ctrlKey || event.metaKey) return;
       if (event.key === 'e' || event.key === 'E'){ setPickMode(!state.pickElement); return; }
       if (event.code === 'Space'){ event.preventDefault(); playPause(); }
@@ -4709,8 +4813,6 @@ body.fullscreen-stage .inspector{display:none}
       else if (event.key === 'ArrowLeft' && event.shiftKey){ event.preventDefault(); seek(Math.max(0, state.time - 1), true); }
       else if (event.key === 'ArrowRight' && event.shiftKey){ event.preventDefault(); seek(Math.min(state.model.duration, state.time + 1), true); }
       else if (event.key === 'Delete' || event.key === 'Backspace'){ removeSelected(event.shiftKey); }
-      else if ((event.ctrlKey || event.metaKey) && event.key === 'z'){ event.preventDefault(); if (event.shiftKey) redo(); else undo(); }
-      else if ((event.ctrlKey || event.metaKey) && event.key === 'y'){ event.preventDefault(); redo(); }
       else if (event.key === 'ArrowLeft'){ event.preventDefault(); step(-1); }
       else if (event.key === 'ArrowRight'){ event.preventDefault(); step(1); }
     });
@@ -4791,7 +4893,7 @@ body.fullscreen-stage .inspector{display:none}
           if (!body.ok) return toast(body.error || 'Restore failed', true);
           banner.classList.remove('show');
           applyProjectResponse(body);
-          toast(t('Checkpoint restored');
+          toast(t('Checkpoint restored'));
         });
       };
       document.getElementById('recover-discard').onclick = function(){

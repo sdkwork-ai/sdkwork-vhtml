@@ -1,6 +1,6 @@
 {
   "name": "@sdkwork/vhtml-studio",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "Deployable VHTML Studio server and HTML shell: local or authenticated remote preview, WYSIWYG/element editing, timeline, assets, captions, transitions, undo and export.",
   "type": "module",
   "license": "MIT",
