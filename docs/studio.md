@@ -103,6 +103,9 @@ The timeline is a full non-linear editing surface; every gesture is one
 validated Core Model edit (undoable, saved atomically).
 
 - Move, trim, split, ripple delete; drag vertically to another compatible lane.
+- **Roll edit**: dragging the shared edge between two adjacent clips rolls the
+  cut point — both clips trim together and the gap never opens
+  (`clip.roll`, magnetic-snapped, Shift bypasses).
 - **Multi-select**: `Shift`/`Ctrl`+click adds clips; dragging on empty lane area
   draws a marquee rectangle; `Ctrl+A` selects all clips. Group drags move the
   whole selection; Delete removes every selected clip.
@@ -118,8 +121,11 @@ validated Core Model edit (undoable, saved atomically).
   speed presets (0.25×–4×), speed ramps (slow–fast–slow / fast–slow–fast /
   clear), freeze frame, detach audio, enable/disable, mute, ripple delete,
   delete; lane menus rename, mute, hide, lock, add or delete lanes; ruler
-  menus drop/rename/delete markers, set In/Out points and **ripple cut the
-  In→Out range across every unlocked lane** (the text-based-editing op).
+      menus drop/rename/delete markers, set In/Out points and **ripple cut the
+      In→Out range across every unlocked lane** (the text-based-editing op) or
+      **lift it keeping the gaps**; single clips take **color tags** (red /
+      orange / green / blue / purple, stored in clip metadata and rendered as a
+      strip on the clip).
 
 ![Ruler context menu](./screenshots/studio-ruler-menu.png)
 - **Markers** (`M`) appear as flags on the ruler; In (`I`) / Out (`O`) points
@@ -192,7 +198,10 @@ Select a clip to edit everything the model supports:
 - audio: volume, pan, fades, mute, detach-audio;
 - captions: text;
 - **Keyframes**: add per-property keyframe tracks (opacity, position, scale,
-  rotation) at the playhead, then edit each keyframe's time, value and easing;
+  rotation) at the playhead, then edit each keyframe's time, value and easing
+  — the easing picker offers named curves plus **cubic-bezier presets**
+  (sharp in-out, soft decay, overshoot, anticipate) and steps; custom
+  `cubic-bezier(...)` values are first-class end-to-end.
 - **Effects**: 19 effect types (blur, brightness, contrast, saturate,
   grayscale, sepia, invert, hue-rotate, drop-shadow, glow, grain, vignette,
   tint, color-overlay, chroma-key, rounded, mask, filter, css) with friendly
@@ -227,6 +236,11 @@ overrides still win. Cues export as WebVTT/SRT and can be burned in.
 press ⤓ Import cues — the normative `cuesToClips` converter parses it and every
 cue lands on the caption lane at its original timestamps (the lane is created
 when missing; repeated imports never collide on ids).
+
+**Title templates**: one click adds a styled title at the playhead — main
+title, lower third, corner badge and highlight presets, each a caption clip
+with per-cue CSS (font, color, background, position); edit text and timing in
+Properties afterwards.
 
 ## External files
 

@@ -104,6 +104,14 @@ out = in + duration * speed
   - 右：keyframe 时间减去 `c`，在 `0` 前插边界值，`fill=both`；
   - `iterations` 设为 1；多迭代/反向动画按近似规则复制。
 
+拆分同时：
+
+- 右片段的动画 `clipId` MUST 重定向为右片段 id。
+- 右片段复制的 `effect` / `audio-effect` id MUST 派生唯一化（左片段保留原 id），
+  与 `clip.duplicate` 的 `-of-<新 id>` 约定一致。
+- 两片段继承原 `fadeIn`/`fadeOut`；当二者之和超过片段时长时 MUST 等比缩放，
+  保持 `fadeIn + fadeOut <= duration` 不变量。
+
 ## 6. 转场协调
 
 任一编辑后：

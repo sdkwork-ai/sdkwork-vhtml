@@ -163,3 +163,76 @@ test('clip metadata (linkId) round-trips the .vhtml file', () => {
   assert.equal(roundTripped[0]!.metadata?.linkId, linkId);
   assert.equal(roundTripped[1]!.metadata?.linkId, linkId);
 });
+
+test('clip.set metadata whole-replace round-trips and preserves link pairing on update', () => {
+  const session = new EditSession(load());
+  const linked = session.apply([{ op: 'clip.link', clipIds: ['a', 'b'] }]);
+  assert.equal(linked.ok, true);
+  const linkId = session.project.timelines[0]!.tracks[0]!.clips[0]!.metadata?.linkId;
+
+  // Setting a color tag must carry existing metadata (callers merge).
+  const tagged = session.apply([{
+    op: 'clip.set',
+    clipId: 'a',
+    props: { metadata: { linkId: linkId!, clipColor: '#ff5c5c' } },
+  }]);
+  assert.equal(tagged.ok, true);
+  const clipA = session.project.timelines[0]!.tracks[0]!.clips.find((clip) => clip.id === 'a')!;
+  assert.equal(clipA.metadata?.clipColor, '#ff5c5c');
+  assert.equal(clipA.metadata?.linkId, linkId, 'link pairing survives the merge');
+
+  // Clearing metadata writes an empty record.
+  const cleared = session.apply([{ op: 'clip.set', clipId: 'a', props: { metadata: {} } }]);
+  assert.equal(cleared.ok, true);
+  const clipA2 = session.project.timelines[0]!.tracks[0]!.clips.find((clip) => clip.id === 'a')!;
+  assert.deepEqual(clipA2.metadata ?? {}, {});
+});
+
+test('clip.split derives unique effect ids and re-targets animation clipIds', () => {
+  const tagged = SOURCE
+    .replace(
+      '<clip id="a" ref="s" start="0s" duration="2s">',
+      '<clip id="a" ref="s" start="0s" duration="2s"><effect id="fx-vignette-1" type="vignette"></effect><audio-effect id="fx-grain-2" type="gain"></audio-effect>',
+    );
+  const session = new EditSession((function(){
+    const parsed = parseVhtml(tagged, { file: 'D:/tmp/edit-split-fx.vhtml' });
+    return parsed.document.project;
+  })());
+  const result = session.apply([{ op: 'clip.split', clipId: 'a', at: '1s' }]);
+  assert.equal(result.ok, true, result.diagnostics.map((d) => d.message).join('\n'));
+  const track = session.project.timelines[0]!.tracks[0]!;
+  const right = track.clips.find((clip) => clip.id === 'a-b')!;
+  const left = track.clips.find((clip) => clip.id === 'a')!;
+  // The left piece keeps the original effect ids; the right piece derives new ones.
+  assert.deepEqual(left.effects.map((effect) => effect.id), ['fx-vignette-1']);
+  assert.deepEqual(right.effects.map((effect) => effect.id), ['fx-vignette-1-of-a-b']);
+  assert.deepEqual(right.audioEffects.map((effect) => effect.id), ['fx-grain-2-of-a-b']);
+  // Animation copies on the right piece re-target the new clip id.
+  for (const animation of right.animations) assert.equal(animation.clipId, 'a-b');
+  // The split result must pass validation with no duplicate ids.
+  const validation = validateDocument({ specVersion: '1.1', project: session.project }, { checkFiles: false });
+  assert.equal(validation.ok, true, validation.diagnostics.map((d) => d.message).join('\n'));
+});
+
+test('clip.split scales inherited fades to the piece duration', () => {
+  // music-like clip: 8s with fadeIn 1.2s + fadeOut 1s; splitting at 2.033s
+  // leaves a 2.033s left piece whose inherited fades would overlap.
+  const faded = SOURCE
+    .replace(
+      '<clip id="m1" ref="media" start="0s" duration="4s" in="1s" />',
+      '<clip id="m1" ref="media" start="0s" duration="8s" in="1s" fade-in="1.2s" fade-out="1s" />',
+    );
+  const parsed = parseVhtml(faded, { file: 'D:/tmp/edit-fades.vhtml' });
+  const session = new EditSession(parsed.document.project);
+  const result = session.apply([{ op: 'clip.split', clipId: 'm1', at: '2.033333s' }]);
+  assert.equal(result.ok, true, result.diagnostics.map((d) => d.message).join('\n'));
+  const track = session.project.timelines[0]!.tracks[1]!;
+  const left = track.clips.find((clip) => clip.id === 'm1')!;
+  const right = track.clips.find((clip) => clip.id !== 'm1')!;
+  const leftSum = toNumber(left.fadeIn ?? { num: 0, den: 1 }) + toNumber(left.fadeOut ?? { num: 0, den: 1 });
+  assert.ok(leftSum <= toNumber(left.duration) + 1e-9, `left fades ${leftSum} <= ${toNumber(left.duration)}`);
+  const rightSum = toNumber(right.fadeIn ?? { num: 0, den: 1 }) + toNumber(right.fadeOut ?? { num: 0, den: 1 });
+  assert.ok(rightSum <= toNumber(right.duration) + 1e-9, `right fades ${rightSum} <= ${toNumber(right.duration)}`);
+  const validation = validateDocument({ specVersion: '1.1', project: session.project }, { checkFiles: false });
+  assert.equal(validation.ok, true, validation.diagnostics.map((d) => d.message).join('\n'));
+});

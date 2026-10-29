@@ -2,6 +2,43 @@
 
 ## 1.1.4
 
+### Studio: professional-editing polish, round 3 (CapCut alignment)
+
+- **Fixed: `clip.split` id and fade semantics (core).** The right piece kept
+  the original effect/audio-effect ids (duplicate-id validation rejected any
+  later batch that split an effected clip) and animation copies kept pointing
+  at the original clip (`animation targets clip X but is nested in clip Y`).
+  Split now derives `-of-<right-id>` effect ids (matching `clip.duplicate`),
+  re-targets copied animation `clipId`s, and scales inherited
+  `fadeIn`/`fadeOut` proportionally when their sum exceeds a piece's duration
+  (spec editing.md §5 updated). Two unit tests cover both.
+- **Roll edit gesture**: dragging the shared edge between two adjacent clips
+  rolls the cut point — both clips trim together and no gap opens
+  (`clip.roll`), with a live cut-point readout, magnetic snapping (Shift
+  bypasses) and an atomic rejection toast when a source-window invariant
+  blocks the move.
+- **Lift In→Out**: the ruler menu gains the non-ripple complement to ripple
+  cut — remove the marked range on every unlocked lane while keeping the
+  gaps, composed from split + remove ops in one atomic edit. Clips that
+  anchor a transition are left untouched (splitting a transition endpoint can
+  leave `from.start === to.start`, which the strict transition validation
+  rejects); the lift keeps those gaps.
+- **Color tags**: single clips take red / orange / green / blue / purple tags
+  stored in `clip.metadata.clipColor` and rendered as a strip on the timeline
+  block. `clip.set` gains whole-replace `metadata` support in Core (the
+  caller sends the merged record, so link pairing survives; an empty record
+  clears), which also gives agents a general metadata channel through the
+  edit API. Unit test covers set-then-roundtrip with link preservation.
+- **Title templates**: the Captions tab offers main title / lower third /
+  corner badge / highlight presets — one click adds a caption clip with
+  per-cue CSS (font, color, background, position) at the playhead, creating
+  the caption lane when missing. `/api/caption` accepts `style` and the
+  Studio model projection exposes per-cue `style`.
+- **Easing presets**: the keyframe editor's easing picker adds cubic-bezier
+  presets (sharp in-out, soft decay, overshoot, anticipate) and steps —
+  custom curves already work end-to-end because `EasingName` accepts any
+  string and the core solver parses `cubic-bezier(...)`.
+
 ### Studio: professional-editing polish, round 2 (CapCut alignment)
 
 - **Fixed: clip metadata never persisted.** `clip.metadata` — the carrier for

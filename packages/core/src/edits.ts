@@ -71,6 +71,8 @@ export interface ClipSetProps {  opacity?: number;
   z?: number;
   name?: string;
   className?: string;
+  /** Whole-replace: the provided record becomes the clip's metadata. */
+  metadata?: Record<string, string>;
   ref?: string;
   loop?: boolean;
   muted?: boolean;
@@ -1156,6 +1158,26 @@ class Editor {
     right.start = at;
     right.duration = rightDuration;
     left.duration = leftDuration;
+    // Fades are durations measured from each end. A piece inherits both of
+    // the original's fades, so when their sum exceeds the piece duration they
+    // scale down proportionally (fadeIn + fadeOut <= duration is validated).
+    for (const piece of [left, right]) {
+      const pieceDuration = piece === left ? leftDuration : rightDuration;
+      const inFade = piece.fadeIn;
+      const outFade = piece.fadeOut;
+      if (inFade && outFade) {
+        const fadeSum = add(inFade, outFade);
+        if (gt(fadeSum, pieceDuration)) {
+          const scale = div(pieceDuration, fadeSum);
+          piece.fadeIn = mul(inFade, scale);
+          piece.fadeOut = mul(outFade, scale);
+        }
+      } else if (outFade) {
+        if (gt(outFade, pieceDuration)) piece.fadeOut = pieceDuration;
+      } else if (inFade) {
+        if (gt(inFade, pieceDuration)) piece.fadeIn = pieceDuration;
+      }
+    }
 
     if (clip.timeRemap?.keyframes.length) {
       // Split the remap curve at the cut. Source offsets are relative to
@@ -1211,6 +1233,13 @@ class Editor {
     const animations = splitAnimations(this.project, clip.animations, leftDuration, reserved);
     left.animations = animations.left;
     right.animations = animations.right;
+    // Animation copies must re-target the new piece, and copied effect ids
+    // must be derived-unique (the left piece keeps the originals) — mirrors
+    // the clipDuplicate convention.
+    for (const animation of right.animations) animation.clipId = right.id;
+    const effectSuffix = `-of-${right.id}`;
+    for (const effect of right.effects) effect.id = `${effect.id}${effectSuffix}`;
+    for (const effect of right.audioEffects) effect.id = `${effect.id}${effectSuffix}`;
 
     for (const transition of track.transitions) {
       if (transition.fromClipId === clip.id) transition.fromClipId = right.id;
@@ -2261,6 +2290,11 @@ class Editor {
     if (props.z !== undefined) clip.z = props.z;
     if (props.name !== undefined) clip.name = props.name;
     if (props.className !== undefined) clip.className = props.className;
+    if (props.metadata !== undefined) {
+      // Whole-replace semantics; link pairing lives here, so callers send the
+      // merged record. An empty record clears all metadata.
+      clip.metadata = { ...props.metadata };
+    }
     if (props.loop !== undefined && clip.kind === 'scene') clip.loop = props.loop;
     if (props.muted !== undefined && (clip.kind === 'video' || clip.kind === 'audio')) clip.muted = props.muted;
     if (props.text !== undefined && clip.kind === 'caption') clip.text = props.text;

@@ -179,6 +179,7 @@ interface StudioClip {
   ref?: string;
   text?: string;
   speaker?: string;
+  style?: Record<string, string>;
   enabled: boolean;
   muted?: boolean;
   sourceIn: number;
@@ -379,6 +380,7 @@ function studioModel(project: Project): StudioModel {
           ref: clip.ref,
           text: clip.kind === 'caption' ? clip.text : undefined,
           speaker: clip.kind === 'caption' ? clip.speaker : undefined,
+          style: clip.kind === 'caption' ? clip.style : undefined,
           enabled: clip.enabled,
           muted: clip.kind === 'video' || clip.kind === 'audio' ? clip.muted : undefined,
           sourceIn: toNumber(clip.sourceIn),
@@ -398,17 +400,19 @@ function studioModel(project: Project): StudioModel {
           z: clip.z,
           blend: clip.blend,
           fit: clip.fit,
-          transform: {
-            x: clip.transform.x,
-            y: clip.transform.y,
-            scaleX: clip.transform.scaleX,
-            scaleY: clip.transform.scaleY,
-            rotate: clip.transform.rotate,
-            anchorX: clip.transform.anchorX,
-            anchorY: clip.transform.anchorY,
-          },
-          effects: clip.effects.map(studioEffect),
-          audioEffects: clip.audioEffects.map(studioEffect),
+          transform: clip.transform
+            ? {
+              x: clip.transform.x,
+              y: clip.transform.y,
+              scaleX: clip.transform.scaleX,
+              scaleY: clip.transform.scaleY,
+              rotate: clip.transform.rotate,
+              anchorX: clip.transform.anchorX,
+              anchorY: clip.transform.anchorY,
+            }
+            : { x: 0, y: 0, scaleX: 1, scaleY: 1, rotate: 0, anchorX: 0, anchorY: 0 },
+          effects: (clip.effects ?? []).map(studioEffect),
+          audioEffects: (clip.audioEffects ?? []).map(studioEffect),
           animations: studioAnimations(clip),
           metadata: clip.metadata && Object.keys(clip.metadata).length ? { ...clip.metadata } : undefined,
           fadeIn: clip.fadeIn ? toNumber(clip.fadeIn) : undefined,
@@ -1028,6 +1032,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
             text?: string;
             start?: number | string;
             duration?: number | string;
+            style?: Record<string, string>;
           };
           const text = (body.text ?? '').trim();
           if (!text) {
@@ -1065,7 +1070,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
             start,
             duration,
           });
-          const clip = { ...base, kind: 'caption', text } as Clip;
+          const clip = { ...base, kind: 'caption', text, style: body.style } as Clip;
           operations.push({ op: 'clip.add', trackId, clip });
           const outcome = applyAndSave(operations);
           sendJson(response, outcome.status, { ...outcome.body, clip });

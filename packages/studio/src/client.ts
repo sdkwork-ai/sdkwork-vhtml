@@ -202,6 +202,7 @@ main{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;min-he
 .clip .filmstrip>div{flex:1 1 0;min-width:0;background-size:cover;background-position:center}
 .clip.thumb:has(.filmstrip){background-image:none}
 .clip .filmstrip~.label,.clip .filmstrip~.sub{position:relative;z-index:1;text-shadow:0 1px 3px #000}
+.clip .color-tag{position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:6px 0 0 6px;pointer-events:none;z-index:3}
 .clip .sub{font-size:9px;opacity:.72;white-space:nowrap;overflow:hidden;pointer-events:none}
 .clip .handle{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize;background:rgba(255,255,255,.12);opacity:0;transition:.1s}
 .clip:hover .handle{opacity:1}
@@ -850,6 +851,12 @@ body.fullscreen-stage .inspector{display:none}
         if (clip.freeze !== undefined && clip.freeze !== null) chips.push('freeze');
         block.innerHTML = '<div class="label">' + escapeHtml(clip.label) + '</div><div class="sub">' + clip.kind + ' · ' + clip.duration.toFixed(2) + 's</div><div class="handle left" data-handle="left"></div><div class="handle right" data-handle="right"></div>';
         if (filmstrip) block.appendChild(filmstrip);
+        if (clip.metadata && clip.metadata.clipColor){
+          var tagStrip = document.createElement('div');
+          tagStrip.className = 'color-tag';
+          tagStrip.style.background = clip.metadata.clipColor;
+          block.appendChild(tagStrip);
+        }
         if (chips.length){
           var chip = document.createElement('div');
           chip.className = 'badge-chip';
@@ -1640,6 +1647,59 @@ body.fullscreen-stage .inspector{display:none}
 
   var KEYFRAME_PROPERTIES = ['opacity', 'x', 'y', 'scaleX', 'scaleY', 'rotate'];
   var AUDIO_KEYFRAME_PROPERTIES = ['volume', 'pan'];
+  // cubic-bezier values are first-class EasingName strings end-to-end
+  // (core/animation.ts parses them), so custom curves need no model change.
+  var EASING_PRESETS = [
+    ['linear', 'Linear'],
+    ['ease', 'Ease (standard)'],
+    ['ease-in', 'Ease in'],
+    ['ease-out', 'Ease out'],
+    ['ease-in-out', 'Ease in-out'],
+    ['cubic-bezier(.86,0,.07,1)', 'Sharp in-out'],
+    ['cubic-bezier(.16,1,.3,1)', 'Soft decay'],
+    ['cubic-bezier(.34,1.56,.64,1)', 'Overshoot'],
+    ['cubic-bezier(.64,0,.78,0)', 'Anticipate'],
+    ['steps(6)', 'Steps (6)'],
+  ];
+  var COLOR_TAGS = [
+    { color: '#ff5c5c', label: 'Red tag' },
+    { color: '#ffb020', label: 'Orange tag' },
+    { color: '#42e8a4', label: 'Green tag' },
+    { color: '#6ec1ff', label: 'Blue tag' },
+    { color: '#c99cff', label: 'Purple tag' },
+  ];
+  // CapCut-style title presets: per-cue CSS declarations applied on top of the
+  // caption lane's base style. The runtime applies them via style.setProperty.
+  var TITLE_PRESETS = [
+    {
+      label: 'Main title',
+      hint: 'Large centered headline at the upper third',
+      text: '标题',
+      duration: 3,
+      style: { 'font-size': '92px', 'font-weight': '800', 'line-height': '1.1', 'color': '#ffffff', 'text-shadow': '0 6px 28px rgba(0,0,0,.65)', 'bottom': '58%' },
+    },
+    {
+      label: 'Lower third',
+      hint: 'Classic lower-third bar',
+      text: '姓名 / 职务',
+      duration: 3,
+      style: { 'font-size': '34px', 'font-weight': '700', 'color': '#ffffff', 'background': 'rgba(6,12,24,.78)', 'padding': '10px 22px', 'border-left': '4px solid #6ee7ff', 'text-align': 'left', 'left': '6%', 'right': 'auto', 'bottom': '12%', 'border-radius': '4px' },
+    },
+    {
+      label: 'Corner badge',
+      hint: 'Small badge pinned to the top-right corner',
+      text: 'LIVE',
+      duration: 2,
+      style: { 'font-size': '22px', 'font-weight': '800', 'letter-spacing': '.18em', 'color': '#0a1220', 'background': '#ff5c5c', 'padding': '6px 14px', 'left': 'auto', 'right': '5%', 'bottom': '88%', 'border-radius': '999px' },
+    },
+    {
+      label: 'Highlight',
+      hint: 'Large yellow emphasis line',
+      text: '重点内容',
+      duration: 2.5,
+      style: { 'font-size': '64px', 'font-weight': '900', 'color': '#ffd54a', 'text-shadow': '0 3px 0 rgba(0,0,0,.45)', 'bottom': '20%' },
+    },
+  ];
 
   function keyframeValueFor(clip, property){
     if (property === 'opacity') return clip.opacity;
@@ -1705,11 +1765,11 @@ body.fullscreen-stage .inspector{display:none}
         value.step = 'any';
         value.value = String(keyframe.value);
         var easing = document.createElement('select');
-        ['linear','ease','ease-in','ease-out','ease-in-out'].forEach(function(name){
+        EASING_PRESETS.forEach(function(presetEasing){
           var option = document.createElement('option');
-          option.value = name;
-          option.textContent = name;
-          if ((keyframe.easing || animation.easing) === name) option.selected = true;
+          option.value = presetEasing[0];
+          option.textContent = t(presetEasing[1]);
+          if ((keyframe.easing || animation.easing) === presetEasing[0]) option.selected = true;
           easing.appendChild(option);
         });
         var del = document.createElement('button');
@@ -2756,6 +2816,22 @@ body.fullscreen-stage .inspector{display:none}
     box.appendChild(importBtn);
     box.appendChild(htmlNode('<div class="hint">' + t('Cues land on the caption lane at their original timestamps; a caption lane is created when missing.') + '</div>'));
 
+    var titlesTitle = document.createElement('div');
+    titlesTitle.className = 'section-title';
+    titlesTitle.textContent = t('Title templates');
+    box.appendChild(titlesTitle);
+    var titleRow = document.createElement('div');
+    titleRow.className = 'btn-row';
+    TITLE_PRESETS.forEach(function(preset){
+      var presetBtn = document.createElement('button');
+      presetBtn.textContent = t(preset.label);
+      presetBtn.title = t(preset.hint);
+      presetBtn.onclick = function(){ addTitleFromPreset(preset); };
+      titleRow.appendChild(presetBtn);
+    });
+    box.appendChild(titleRow);
+    box.appendChild(htmlNode('<div class="hint">' + t('Titles are caption clips with per-cue styles; edit their text and timing in Properties after adding.') + '</div>'));
+
     var styleLane = captionLane();
     var styleTitle = document.createElement('div');
     styleTitle.className = 'section-title';
@@ -3095,6 +3171,24 @@ body.fullscreen-stage .inspector{display:none}
       if (clip.kind === 'video' || clip.kind === 'audio'){
         ctxItem(menu, clip.muted ? 'Unmute clip' : 'Mute clip', '', function(){ toggleClipMuted(selected); }, locked);
       }
+      if (selected.length === 1){
+        ctxSep(menu);
+        ctxTitle(menu, t('Color tag'));
+        COLOR_TAGS.forEach(function(swatch){
+          var item = ctxItem(menu, t(swatch.label), '', function(){
+            var meta = Object.assign({}, clip.metadata || {}, { clipColor: swatch.color });
+            edit([{ op:'clip.set', clipId:clip.id, props:{ metadata: meta } }]).catch(function(){});
+          }, locked);
+          item.style.borderLeft = '3px solid ' + swatch.color;
+        });
+        if (clip.metadata && clip.metadata.clipColor){
+          ctxItem(menu, t('Clear color tag'), '', function(){
+            var meta = Object.assign({}, clip.metadata || {});
+            delete meta.clipColor;
+            edit([{ op:'clip.set', clipId:clip.id, props:{ metadata: meta } }]).catch(function(){});
+          }, locked);
+        }
+      }
       if (isVisualClip(clip)){
         ctxSep(menu);
         ctxTitle(menu, 'Layer');
@@ -3161,6 +3255,7 @@ body.fullscreen-stage .inspector{display:none}
             .then(function(){ toast(t('Range ripple-cut from every lane')); })
             .catch(function(error){ toast(error.message, true); });
         });
+        ctxItem(menu, t('Lift In→Out (keep gaps)'), '', liftInOut);
       }
       ctxSep(menu);
       ctxItem(menu, t('Paste here'), 'Ctrl+V', function(){ pasteClipboard(at); });
@@ -3420,6 +3515,78 @@ body.fullscreen-stage .inspector{display:none}
     });
     if (!ops.length) return toast('No clip crosses the playhead', true);
     edit(ops).then(function(){ toast('Split ' + ops.length + ' clip(s) at ' + fmtTime(at)); }).catch(function(){});
+  }
+
+  // Lift the In→Out range: remove it but keep the gaps (no ripple). Composed
+  // from split + remove ops so the whole edit stays atomic.
+  function liftInOut(){
+    if (state.inPoint === null || state.outPoint === null || state.outPoint <= state.inPoint){
+      return toast(t('Set In and Out points first'), true);
+    }
+    var inT = state.inPoint;
+    var outT = state.outPoint;
+    var eps = 0.0001;
+    var ops = [];
+    // Clips that anchor a transition are left untouched: splitting a
+    // transition endpoint can leave from.start === to.start, which the
+    // strict transition validation rejects. The lift keeps those gaps.
+    var transitionAnchors = {};
+    state.model.lanes.forEach(function(lane){
+      (lane.transitions || []).forEach(function(transition){
+        transitionAnchors[transition.from] = true;
+        transitionAnchors[transition.to] = true;
+      });
+    });
+    state.model.lanes.forEach(function(lane){
+      if (lane.locked) return;
+      lane.clips.forEach(function(clip){
+        if (transitionAnchors[clip.id]) return;
+        var s = clip.start;
+        var e = clip.start + clip.duration;
+        if (e <= inT + eps || s >= outT - eps) return;
+        if (s < inT - eps && e > outT + eps){
+          var middle = nextClientId('lift');
+          var keep = nextClientId('lift');
+          ops.push({ op:'clip.split', clipId:clip.id, at:inT, id:middle });
+          ops.push({ op:'clip.split', clipId:middle, at:outT, id:keep });
+          ops.push({ op:'clip.remove', clipId:middle });
+        } else if (s < inT - eps){
+          var tail = nextClientId('lift');
+          ops.push({ op:'clip.split', clipId:clip.id, at:inT, id:tail });
+          ops.push({ op:'clip.remove', clipId:tail });
+        } else if (e > outT + eps){
+          var keepRight = nextClientId('lift');
+          ops.push({ op:'clip.split', clipId:clip.id, at:outT, id:keepRight });
+          ops.push({ op:'clip.remove', clipId:clip.id });
+        } else {
+          ops.push({ op:'clip.remove', clipId:clip.id });
+        }
+      });
+    });
+    if (!ops.length) return toast(t('Nothing inside the In→Out range'), true);
+    edit(ops).then(function(){ toast(t('Range lifted — gaps kept')); }).catch(function(error){ toast(error.message || 'Lift rejected', true); });
+  }
+
+  // ---------- title presets ----------
+
+  function addTitleFromPreset(preset){
+    // /api/caption builds a complete caption clip (lane created when missing);
+    // the preset contributes text, timing and the per-cue style.
+    api('/api/caption', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        text: preset.text,
+        start: snap(state.time),
+        duration: preset.duration,
+        style: preset.style,
+      }),
+    })
+      .then(function(body){
+        if (!body.ok) return toast(body.message || body.error || 'Title rejected', true);
+        return applyProjectResponse(body).then(function(){ toast(t('Title added — edit the text in Properties')); });
+      })
+      .catch(function(error){ toast(error.message || 'Title rejected', true); });
   }
 
   // ---------- lane volume / pan ----------
@@ -4407,6 +4574,41 @@ body.fullscreen-stage .inspector{display:none}
         try { clipNode.setPointerCapture(event.pointerId); } catch (error) {}
         return;
       }
+      // Dragging the shared edge between two adjacent clips rolls the edit
+      // point (both clips trim together, no gap) — the standard NLE gesture.
+      var rollPartner = null;
+      var rollEdge = null;
+      if (handle === 'right' || handle === 'left'){
+        var laneClips = found.lane.clips.slice().sort(function(a, b){ return a.start - b.start; });
+        var myIndex = laneClips.findIndex(function(candidate){ return candidate.id === found.clip.id; });
+        if (handle === 'right' && myIndex >= 0 && myIndex < laneClips.length - 1){
+          var nextClip = laneClips[myIndex + 1];
+          if (Math.abs((found.clip.start + found.clip.duration) - nextClip.start) < 0.0005){
+            rollEdge = 'end'; rollPartner = nextClip;
+          }
+        }
+        if (handle === 'left' && myIndex > 0){
+          var prevClip = laneClips[myIndex - 1];
+          if (Math.abs((prevClip.start + prevClip.duration) - found.clip.start) < 0.0005){
+            rollEdge = 'start'; rollPartner = prevClip;
+          }
+        }
+      }
+      if (rollEdge && rollPartner){
+        state.dragging = {
+          type: 'roll',
+          clip: found.clip,
+          lane: found.lane,
+          partner: rollPartner,
+          edge: rollEdge,
+          startX: event.clientX,
+          originalBoundary: rollEdge === 'end' ? found.clip.start + found.clip.duration : found.clip.start,
+          moved: false
+        };
+        event.preventDefault();
+        try { clipNode.setPointerCapture(event.pointerId); } catch (error) {}
+        return;
+      }
       if (event.shiftKey || event.ctrlKey || event.metaKey){
         toggleSelection(found.clip.id, true);
       } else if (selectionIds().indexOf(found.clip.id) < 0){
@@ -4515,6 +4717,33 @@ body.fullscreen-stage .inspector{display:none}
         var nextTime = Math.max(0, Math.min(state.model.duration, snap(markerDrag.originTime + deltaT)));
         markerDrag.previewTime = nextTime;
         showDragTip('Marker @ ' + fmtTime(nextTime), event.clientX, event.clientY);
+        return;
+      }
+      if (state.dragging.type === 'roll'){
+        var rollDrag = state.dragging;
+        var rollDelta = (event.clientX - rollDrag.startX) / pps();
+        if (Math.abs(rollDelta) > 0.005) rollDrag.moved = true;
+        if (!rollDrag.moved) return;
+        var rollBoundary = magnetTime(rollDrag.originalBoundary + rollDelta, rollDrag.clip.id, event.shiftKey);
+        rollDrag.previewBoundary = rollBoundary;
+        var rateRoll = pps();
+        var primaryBlock = tracksEl.querySelector('.clip[data-clip-id="' + rollDrag.clip.id + '"]');
+        var partnerBlock = tracksEl.querySelector('.clip[data-clip-id="' + rollDrag.partner.id + '"]');
+        if (rollDrag.edge === 'end'){
+          if (primaryBlock) primaryBlock.style.width = Math.max(4, (rollBoundary - rollDrag.clip.start) * rateRoll) + 'px';
+          if (partnerBlock){
+            partnerBlock.style.left = (rollBoundary * rateRoll) + 'px';
+            partnerBlock.style.width = Math.max(4, (rollDrag.partner.start + rollDrag.partner.duration - rollBoundary) * rateRoll) + 'px';
+          }
+          showDragTip(t('Roll · cut at ') + fmtTime(rollBoundary), event.clientX, event.clientY);
+        } else {
+          if (primaryBlock){
+            primaryBlock.style.left = (rollBoundary * rateRoll) + 'px';
+            primaryBlock.style.width = Math.max(4, (rollDrag.clip.start + rollDrag.clip.duration - rollBoundary) * rateRoll) + 'px';
+          }
+          if (partnerBlock) partnerBlock.style.width = Math.max(4, (rollBoundary - rollDrag.partner.start) * rateRoll) + 'px';
+          showDragTip(t('Roll · cut at ') + fmtTime(rollBoundary), event.clientX, event.clientY);
+        }
         return;
       }
       if (state.dragging.type === 'lane-height'){
@@ -4642,6 +4871,13 @@ body.fullscreen-stage .inspector{display:none}
           toggleSelection(drag.clip.id, true);
           renderTimeline(); renderInspector();
         }
+        return;
+      }
+      if (drag.type === 'roll'){
+        if (!drag.moved || drag.previewBoundary === undefined) return;
+        var rollDelta = drag.previewBoundary - drag.originalBoundary;
+        edit([{ op:'clip.roll', clipId:drag.clip.id, edge:drag.edge, delta:Number(rollDelta.toFixed(6)) }])
+          .catch(function(error){ toast(error.message || 'Roll rejected', true); });
         return;
       }
       if (drag.type === 'lane-height'){
