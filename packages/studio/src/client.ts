@@ -1237,6 +1237,8 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       box.appendChild(selectField('Fit', clip.fit, ['cover','contain','fill','none','scale-down'], function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ fit:value } }]); }));
       box.appendChild(selectField('Blend', clip.blend, ['normal','multiply','screen','overlay','darken','lighten','color-dodge','color-burn','soft-light','hard-light','difference','exclusion','hue','saturation','color','luminosity'], function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ blend:value } }]); }));
       renderCropSection(box, clip);
+      renderMaskSection(box, clip);
+      renderCameraSection(box, clip);
     }
     if (clip.kind === 'audio' || clip.kind === 'video'){
       var audioSection = document.createElement('div');
@@ -1715,6 +1717,340 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     }
   }
 
+  // ---------- mask studio (CapCut-style shape masks) ----------
+
+  var MASK_SHAPE_DEFS = [
+    ['rect', 'Rectangle', '▭'],
+    ['circle', 'Circle', '◯'],
+    ['ellipse', 'Ellipse', '⬭'],
+    ['triangle', 'Triangle', '△'],
+    ['diamond', 'Diamond', '◇'],
+    ['star', 'Star', '★'],
+    ['heart', 'Heart', '♥'],
+    ['linear', 'Linear wipe', '▤'],
+    ['mirror', 'Mirror half', '◧'],
+  ];
+  function maskShapeLabel(shape){
+    var found = MASK_SHAPE_DEFS.filter(function(def){ return def[0] === shape; })[0];
+    return found ? t(found[1]) : shape;
+  }
+  function maskAspect(){
+    return (state.model.width || 16) / (state.model.height || 9);
+  }
+  // Shapes are generated in screen units (x: % of width, y: % of height ×
+  // aspect) so circles and stars stay round on any canvas, rotated around the
+  // mask center, then mapped back to clip-path percent pairs. Linear/mirror
+  // are Sutherland–Hodgman half-plane clips of the frame rectangle. The
+  // result rides the spec mask effect "points" channel, so preview and
+  // export share the exact same polygon.
+  function computeMaskPoints(params){
+    var aspect = maskAspect();
+    var shape = params.shape;
+    var size = Number(params.size); if (!isFinite(size)) size = 60;
+    size = Math.max(4, Math.min(200, size));
+    var cx = Number(params.cx); if (!isFinite(cx)) cx = 50;
+    var cy = Number(params.cy); if (!isFinite(cy)) cy = 50;
+    var angle = (Number(params.angle) || 0) * Math.PI / 180;
+    var cos = Math.cos(angle), sin = Math.sin(angle);
+    var cxs = cx, cys = cy * aspect;
+    function rot(px, py){
+      var ax = px - cxs, ay = py - cys;
+      return [cxs + ax * cos - ay * sin, cys + ax * sin + ay * cos];
+    }
+    function abs(rel){ return rel.map(function(p){ return rot(cxs + p[0], cys + p[1]); }); }
+    var pts = [];
+    var i, t;
+    if (shape === 'linear' || shape === 'mirror'){
+      var a = shape === 'mirror' ? angle + Math.PI / 2 : angle;
+      var nx = -Math.sin(a), ny = Math.cos(a);
+      var frame = [[0, 0], [100, 0], [100, 100 * aspect], [0, 100 * aspect]];
+      for (i = 0; i < frame.length; i++){
+        var p = frame[i], q = frame[(i + 1) % frame.length];
+        var dp = (p[0] - cxs) * nx + (p[1] - cys) * ny;
+        var dq = (q[0] - cxs) * nx + (q[1] - cys) * ny;
+        if (dp >= 0) pts.push(p);
+        if ((dp > 0 && dq < 0) || (dp < 0 && dq > 0)){
+          var k = dp / (dp - dq);
+          pts.push([p[0] + (q[0] - p[0]) * k, p[1] + (q[1] - p[1]) * k]);
+        }
+      }
+    } else {
+      var r = size / 2;
+      var hy = r * aspect;
+      if (shape === 'rect'){
+        pts = abs([[-r, -hy], [r, -hy], [r, hy], [-r, hy]]);
+      } else if (shape === 'triangle'){
+        pts = abs([[0, -hy], [r, hy], [-r, hy]]);
+      } else if (shape === 'diamond'){
+        pts = abs([[0, -hy], [r, 0], [0, hy], [-r, 0]]);
+      } else if (shape === 'circle' || shape === 'ellipse'){
+        pts = [];
+        for (i = 0; i < 40; i++){
+          t = (i / 40) * Math.PI * 2;
+          pts.push(rot(cxs + r * Math.cos(t), cys + (shape === 'ellipse' ? hy : r) * Math.sin(t)));
+        }
+      } else if (shape === 'star'){
+        pts = [];
+        for (i = 0; i < 10; i++){
+          t = (i / 10) * Math.PI * 2 - Math.PI / 2;
+          var radius = i % 2 === 0 ? r : r * 0.4;
+          pts.push(rot(cxs + radius * Math.cos(t), cys + radius * Math.sin(t)));
+        }
+      } else if (shape === 'heart'){
+        pts = [];
+        var unit = r / 17;
+        for (i = 0; i < 40; i++){
+          t = (i / 40) * Math.PI * 2;
+          var hx = 16 * Math.pow(Math.sin(t), 3);
+          var hyy = 13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t);
+          pts.push(rot(cxs + hx * unit, cys - (hyy + 2.5) * unit));
+        }
+      }
+    }
+    return pts.map(function(p){ return [p[0], p[1] / aspect]; });
+  }
+  function maskPointsString(params){
+    if (!params || !params.shape) return '';
+    var pts = computeMaskPoints(params);
+    if (pts.length < 3) return '';
+    var pairs = pts.map(function(p){ return round3(p[0]) + '% ' + round3(p[1]) + '%'; }).join(', ');
+    if (params.invert) pairs = 'evenodd, 0% 0%, 100% 0%, 100% 100%, 0% 100%, ' + pairs;
+    return pairs;
+  }
+  function maskEffectsOf(clip){
+    return (clip.effects || []).filter(function(fx){ return fx.type === 'mask'; });
+  }
+  function setMaskParams(clip, fx, patch){
+    var next = JSON.parse(JSON.stringify(fx));
+    Object.keys(patch).forEach(function(key){ next.params[key] = patch[key]; });
+    var points = maskPointsString(next.params);
+    if (!points) return toast(t('Mask region falls outside the frame — adjust size or center'), true);
+    next.params.points = points;
+    var nextEffects = clip.effects.map(function(candidate){ return candidate.id === fx.id ? next : candidate; });
+    edit([{ op:'clip.set', clipId:clip.id, props:{ effects:nextEffects } }]).catch(function(){});
+  }
+  function addMaskToClip(clip, shape){
+    var params = { shape: shape, size: 60, cx: 50, cy: 50, angle: 0, invert: false };
+    params.points = maskPointsString(params);
+    var existing = maskEffectsOf(clip)[0];
+    if (existing){
+      return setMaskParams(clip, existing, { shape: shape, size: 60, cx: 50, cy: 50, angle: 0, invert: false });
+    }
+    var effect = {
+      id: 'fx-mask-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36),
+      type: 'mask',
+      params: params,
+      enabled: true,
+    };
+    edit([{ op:'effect.add', clipId:clip.id, effect:effect }])
+      .then(function(){ toast(t('Mask added: ') + maskShapeLabel(shape)); })
+      .catch(function(){});
+  }
+  function renderMaskSection(box, clip){
+    var title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = t('Mask · shape & region (蒙版)');
+    box.appendChild(title);
+    var presets = document.createElement('div');
+    presets.className = 'btn-row';
+    MASK_SHAPE_DEFS.forEach(function(def){
+      var button = document.createElement('button');
+      button.textContent = def[2] + ' ' + t(def[1]);
+      button.title = t('Apply the ') + t(def[1]) + t(' mask (CapCut-style shape mask)');
+      button.onclick = function(){ addMaskToClip(clip, def[0]); };
+      presets.appendChild(button);
+    });
+    box.appendChild(presets);
+    var masks = maskEffectsOf(clip);
+    if (masks.length > 1){
+      var multi = document.createElement('div');
+      multi.className = 'element-note';
+      multi.textContent = t('More than one mask effect — the runtime keeps a single clip-path channel, so the LAST one wins.');
+      box.appendChild(multi);
+    }
+    masks.forEach(function(fx){
+      var head = document.createElement('div');
+      head.className = 'transition-row';
+      head.innerHTML = '<b>' + escapeHtml(effectLabel(fx.type)) + '</b><small style="margin-left:6px;opacity:.6">' + escapeHtml(maskShapeLabel(fx.params && fx.params.shape)) + '</small>';
+      var enable = document.createElement('button');
+      enable.textContent = fx.enabled ? 'On' : 'Off';
+      enable.style.marginLeft = 'auto';
+      enable.onclick = function(){
+        var nextEffects = clip.effects.map(function(candidate){
+          return candidate.id === fx.id ? Object.assign({}, candidate, { enabled:!candidate.enabled }) : candidate;
+        });
+        edit([{ op:'clip.set', clipId:clip.id, props:{ effects:nextEffects } }]).catch(function(){});
+      };
+      var remove = document.createElement('button');
+      remove.textContent = '✕';
+      remove.className = 'danger';
+      remove.title = t('Remove mask');
+      remove.onclick = function(){ edit([{ op:'effect.remove', clipId:clip.id, effectId:fx.id }]).catch(function(){}); };
+      head.appendChild(enable);
+      head.appendChild(remove);
+      box.appendChild(head);
+      var p = fx.params || {};
+      var geometric = Boolean(p.shape) && MASK_SHAPE_DEFS.some(function(def){ return def[0] === p.shape; });
+      if (geometric){
+        var grid = document.createElement('div');
+        grid.className = 'caption-style-grid';
+        [['size', 'Size %'], ['cx', 'Center X %'], ['cy', 'Center Y %'], ['angle', 'Angle °']].forEach(function(pair){
+          var field = document.createElement('div');
+          field.className = 'field';
+          field.innerHTML = '<label>' + t(pair[1]) + '</label>';
+          field.appendChild(numberInput(p[pair[0]], 1, function(value){
+            var patch = {};
+            patch[pair[0]] = parseFloat(value);
+            setMaskParams(clip, fx, patch);
+          }));
+          grid.appendChild(field);
+        });
+        box.appendChild(grid);
+        var invertRow = document.createElement('label');
+        invertRow.style.display = 'flex';
+        invertRow.style.gap = '6px';
+        invertRow.style.alignItems = 'center';
+        var invert = document.createElement('input');
+        invert.type = 'checkbox';
+        invert.checked = Boolean(p.invert);
+        invert.onchange = function(){ setMaskParams(clip, fx, { invert: invert.checked }); };
+        invertRow.appendChild(invert);
+        invertRow.appendChild(document.createTextNode(t('Invert mask (reveal outside)')));
+        box.appendChild(invertRow);
+      } else {
+        var legacy = document.createElement('div');
+        legacy.className = 'element-note';
+        legacy.textContent = t('Legacy mask parameters — pick a shape above to convert it to the shape editor.');
+        box.appendChild(legacy);
+      }
+    });
+  }
+
+  // ---------- camera moves (Ken Burns) ----------
+
+  function addKenBurns(clip, kind){
+    var busy = (clip.animations || []).filter(function(animation){
+      return animation.enabled !== false && ['x', 'scaleX', 'scaleY'].indexOf(animation.property) >= 0;
+    });
+    if (busy.length) return toast(t('Clip already has transform keyframes — remove those tracks first'), true);
+    var width = state.model.width || 1920;
+    var zoom = 1.18;
+    var margin = (zoom - 1) / 2;
+    var duration = Number(clip.duration.toFixed(6));
+    var stamp = Date.now().toString(36) + '-' + (++effectIdCounter).toString(36);
+    function track(property, v0, v1){
+      return {
+        id: 'kb-' + kind + '-' + clip.id + '-' + property + '-' + stamp,
+        property: property,
+        keyframes: [{ time: 0, value: v0 }, { time: duration, value: v1 }],
+        start: 0,
+        duration: duration,
+        timeBase: 'clip',
+        easing: 'ease-in-out',
+        iterations: 1,
+        direction: 'normal',
+        fill: 'both',
+        compose: 'replace',
+        enabled: true,
+      };
+    }
+    var tracks = [];
+    if (kind === 'zoom-in'){
+      tracks.push(track('scaleX', 1, zoom), track('scaleY', 1, zoom));
+    } else if (kind === 'zoom-out'){
+      tracks.push(track('scaleX', zoom, 1), track('scaleY', zoom, 1));
+    } else if (kind === 'pan-left'){
+      // Camera travels left: content starts pushed right (right region in
+      // view) and slides to expose the left region; the constant 1.18 zoom
+      // guarantees the pan never reveals the frame edge.
+      tracks.push(track('scaleX', zoom, zoom), track('scaleY', zoom, zoom), track('x', -width * margin, width * margin));
+    } else {
+      tracks.push(track('scaleX', zoom, zoom), track('scaleY', zoom, zoom), track('x', width * margin, -width * margin));
+    }
+    edit(tracks.map(function(animation){
+      return { op:'animation.add', animation:animation, clipId:clip.id };
+    })).then(function(){
+      toast(t('Camera move applied: ') + t(kind === 'zoom-in' ? 'Zoom in' : kind === 'zoom-out' ? 'Zoom out' : kind === 'pan-left' ? 'Pan left' : 'Pan right'));
+    }).catch(function(){});
+  }
+  function renderCameraSection(box, clip){
+    var title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = t('Camera move · Ken Burns (运镜)');
+    box.appendChild(title);
+    var row = document.createElement('div');
+    row.className = 'btn-row';
+    [
+      ['zoom-in', 'Zoom in', '🔍＋'],
+      ['zoom-out', 'Zoom out', '🔍－'],
+      ['pan-left', 'Pan left', '⬅'],
+      ['pan-right', 'Pan right', '➡'],
+    ].forEach(function(def){
+      var button = document.createElement('button');
+      button.textContent = def[2] + ' ' + t(def[1]);
+      button.title = t('One-click Ken Burns move across the whole clip');
+      button.onclick = function(){ addKenBurns(clip, def[0]); };
+      row.appendChild(button);
+    });
+    box.appendChild(row);
+  }
+
+  // ---------- layout presets (picture-in-picture / splits) ----------
+
+  function layoutVisualTargets(ids){
+    return ids.map(function(id){ return clipById(id); }).filter(function(entry){
+      return entry && isVisualClip(entry.clip) && !entry.lane.locked;
+    }).sort(function(a, b){
+      return (a.clip.z - b.clip.z) || (a.clip.start - b.clip.start);
+    });
+  }
+  function applyLayoutPreset(ids, preset){
+    var targets = layoutVisualTargets(ids);
+    if (!targets.length) return toast(t('Select visual clips to arrange'), true);
+    var width = state.model.width || 1920;
+    var height = state.model.height || 1080;
+    var ops = [];
+    function put(entry, x, y, scale){
+      var transform = Object.assign({}, entry.clip.transform, { x:x, y:y, scaleX:scale, scaleY:scale });
+      ops.push({ op:'clip.set', clipId:entry.clip.id, props:{ transform:transform } });
+    }
+    if (preset === 'full'){
+      targets.forEach(function(entry){ put(entry, 0, 0, 1); });
+    } else if (preset === 'pip'){
+      var top = targets[targets.length - 1];
+      put(top, Math.round(width * 0.28), Math.round(height * 0.28), 0.4);
+    } else if (preset === 'split-lr' || preset === 'split-tb'){
+      if (targets.length < 2) return toast(t('Split layouts need 2 visual clips'), true);
+      if (preset === 'split-lr'){
+        put(targets[0], -Math.round(width / 4), 0, 0.5);
+        put(targets[1], Math.round(width / 4), 0, 0.5);
+      } else {
+        put(targets[0], 0, -Math.round(height / 4), 0.5);
+        put(targets[1], 0, Math.round(height / 4), 0.5);
+      }
+    } else if (preset === 'thirds'){
+      if (targets.length < 3) return toast(t('Three panels need 3 visual clips'), true);
+      var third = Math.round(width / 3);
+      [0, 1, 2].forEach(function(index){
+        put(targets[index], (index - 1) * third, 0, 1 / 3);
+      });
+    } else if (preset === 'grid4'){
+      if (targets.length < 4) return toast(t('Grid 2×2 needs 4 visual clips'), true);
+      [
+        [-Math.round(width / 4), -Math.round(height / 4)],
+        [Math.round(width / 4), -Math.round(height / 4)],
+        [-Math.round(width / 4), Math.round(height / 4)],
+        [Math.round(width / 4), Math.round(height / 4)],
+      ].forEach(function(position, index){
+        put(targets[index], position[0], position[1], 0.5);
+      });
+    }
+    if (!ops.length) return;
+    edit(ops).then(function(){
+      toast(t('Layout applied: ') + t(preset === 'full' ? 'Full frame (reset)' : preset === 'pip' ? 'Picture-in-picture · bottom-right' : preset === 'split-lr' ? 'Split left/right' : preset === 'split-tb' ? 'Split top/bottom' : preset === 'thirds' ? 'Three panels' : 'Grid 2×2'));
+    }).catch(function(){});
+  }
+
   // ---------- keyframes ----------
 
   var EMBED = new URLSearchParams(location.search).get('embed') === '1';
@@ -1978,7 +2314,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     'color-overlay': { params:{ color:'#6ee7ff', opacity:0.35, blend:'normal' } },
     'chroma-key': { params:{ color:'#00ff00', tolerance:0.25, spill:0.15 } },
     'rounded': { params:{ radius:'24px' } },
-    'mask': { params:{ shape:'inset', inset:'5%' } },
+    'mask': { params:{ shape:'circle', size:60, cx:50, cy:50, angle:0, invert:false } },
     'filter': { params:{ value:'none' } },
     'css': { params:{ style:'' } },
   };
@@ -1999,7 +2335,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     'color-overlay': 'Color overlay',
     'chroma-key': 'Chroma key (green screen)',
     'rounded': 'Rounded corners',
-    'mask': 'Mask',
+    'mask': 'Mask (蒙版)',
     'filter': 'Custom filter',
     'css': 'Custom CSS',
   };
@@ -2015,6 +2351,8 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     'compressor': { params:{ threshold:0.125, ratio:4, attack:20, release:250 }, label:'Compressor' },
     'echo': { params:{ inGain:0.8, outGain:0.9, delay:120, decay:0.35 }, label:'Echo / reverb' },
     'pitch': { params:{ semitones:0 }, label:'Pitch shift (voice)' },
+    'denoise': { params:{ strength:12, floor:-25 }, label:'Denoise (智能降噪)' },
+    'normalize': { params:{ lufs:-16 }, label:'Loudness normalize (统一响度)' },
   };
   var TRANSITION_CATALOG = ['crossfade', 'fade', 'dip', 'wipe', 'slide', 'zoom', 'blur'];
   var TRANSITION_LABELS = {
@@ -2082,6 +2420,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     title.textContent = t('Effects');
     box.appendChild(title);
     (clip.effects || []).forEach(function(fx){
+      if (fx.type === 'mask') return; // edited by the dedicated mask section
       var head = document.createElement('div');
       head.className = 'transition-row';
       head.innerHTML = '<b>' + escapeHtml(effectLabel(fx.type)) + '</b><small style="margin-left:6px;opacity:.6">' + escapeHtml(fx.type) + '</small>';
@@ -3431,6 +3770,23 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         ctxItem(menu, t('Send backward'), '', function(){ layerOp(selected, 'down'); }, locked);
         ctxItem(menu, t('Bring to front'), '', function(){ layerOp(selected, 'top'); }, locked);
         ctxItem(menu, t('Send to back'), '', function(){ layerOp(selected, 'bottom'); }, locked);
+        ctxItem(menu, maskEffectsOf(clip).length ? t('Edit mask — open Properties') : t('Add mask (circle)'), '', function(){
+          if (maskEffectsOf(clip).length){
+            state.tab = 'props';
+            renderInspector();
+          } else {
+            addMaskToClip(clip, 'circle');
+          }
+        }, locked || selected.length !== 1);
+        ctxSep(menu);
+        ctxTitle(menu, t('Layout · 画面布局'));
+        var layoutCount = layoutVisualTargets(selected).length;
+        ctxItem(menu, t('Full frame (reset)'), '', function(){ applyLayoutPreset(selected, 'full'); }, locked);
+        ctxItem(menu, t('Picture-in-picture · bottom-right'), '', function(){ applyLayoutPreset(selected, 'pip'); }, locked);
+        ctxItem(menu, t('Split left/right') + ' (2)', '', function(){ applyLayoutPreset(selected, 'split-lr'); }, locked || layoutCount < 2);
+        ctxItem(menu, t('Split top/bottom') + ' (2)', '', function(){ applyLayoutPreset(selected, 'split-tb'); }, locked || layoutCount < 2);
+        ctxItem(menu, t('Three panels') + ' (3)', '', function(){ applyLayoutPreset(selected, 'thirds'); }, locked || layoutCount < 3);
+        ctxItem(menu, t('Grid 2×2') + ' (4)', '', function(){ applyLayoutPreset(selected, 'grid4'); }, locked || layoutCount < 4);
         ctxSep(menu);
         ctxItem(menu, t('Align selection to playhead'), '', alignSelectionToPlayhead, locked);
       }

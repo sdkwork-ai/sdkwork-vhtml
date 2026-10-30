@@ -557,15 +557,19 @@ function collectEffects(
         break;
       }
       case 'mask': {
+        // An explicit points polygon wins: shape editors (Studio mask studio)
+        // author sized/rotated geometry there. Legacy shape keywords render
+        // their native primitives only when no points are authored.
+        const points = effectString(effect, ['points'], '');
         const shape = effectString(effect, ['shape'], 'inset');
-        if (shape === 'circle') {
+        if (points) {
+          clipPath = `polygon(${points})`;
+        } else if (shape === 'circle') {
           clipPath = 'circle(50% at 50% 50%)';
         } else if (shape === 'ellipse') {
           clipPath = 'ellipse(50% 50% at 50% 50%)';
         } else if (shape === 'inset') {
           clipPath = `inset(${effectString(effect, ['inset', 'value'], '5%')})`;
-        } else if (effectString(effect, ['points'], '')) {
-          clipPath = `polygon(${effectString(effect, ['points'], '')})`;
         } else {
           clipPath = effectString(effect, ['clip-path', 'value'], 'inset(5%)');
         }

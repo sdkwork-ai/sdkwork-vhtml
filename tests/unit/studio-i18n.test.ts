@@ -59,9 +59,10 @@ test('Studio UI offers every runtime visual effect type', () => {
 });
 
 test('Studio UI offers the parameterised audio effect types', () => {
-  // 'fade' is authored through the clip fadeIn/fadeOut fields, 'normalize'
-  // through export loudness — neither takes per-effect params today.
-  const reserved = new Set(['fade', 'normalize']);
+  // 'fade' is authored through the clip fadeIn/fadeOut fields — it takes no
+  // per-effect params today. 'normalize'/'denoise' ship in the Studio audio
+  // catalog (per-clip export mixdown effects).
+  const reserved = new Set(['fade']);
   for (const type of AUDIO_EFFECT_TYPES) {
     if (reserved.has(type)) continue;
     assert.ok(STUDIO_HTML.includes(`'${type}'`),

@@ -293,7 +293,7 @@ VHTML 1.1 不承诺：
 | `filter` | `value` | 原始 CSS filter 片段 |
 | `css` | `style/value` | 受控自定义 CSS 片段 |
 
-音频效果：`gain`、`highpass`、`lowpass`、`compressor`、`echo`、`pitch`。
+音频效果：`gain`、`highpass`、`lowpass`、`compressor`、`echo`、`pitch`、`fade`（Clip 字段 `fade-in`/`fade-out`）、`normalize`（EBU R128 响度标准化，`lufs`/`tp`/`lra`）、`denoise`（FFT 降噪，`strength`/`floor`）、`ducking`（侧链闪避）。
 未知效果产生 warning，渲染器应忽略并继续，除非被声明为必需扩展。
 
 ### 3.13 Animation

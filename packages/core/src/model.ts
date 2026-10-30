@@ -322,7 +322,7 @@ export const VISUAL_EFFECT_TYPES: ReadonlySet<string> = new Set([
 
 /** Built-in audio effect types mixers MUST implement (single source of truth). */
 export const AUDIO_EFFECT_TYPES: ReadonlySet<string> = new Set([
-  'gain', 'highpass', 'lowpass', 'compressor', 'echo', 'pitch', 'fade', 'normalize', 'ducking',
+  'gain', 'highpass', 'lowpass', 'compressor', 'echo', 'pitch', 'fade', 'normalize', 'denoise', 'ducking',
 ]);
 
 /** Built-in transition types renderers MUST implement (single source of truth). */

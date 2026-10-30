@@ -101,7 +101,7 @@ export function capabilityReport(options: { browserVersion?: string; ffmpegVersi
       generation: 'procedural, manifest and HTTP providers; direction, review, rights, dependency graph',
       'generation-vendors': 'vendor catalog with parameter mappings for 26 vendors across video (Runway, Luma, Kling, Pika, Hailuo, Veo, Sora, Wan, Vidu, PixVerse, Seedance, SVD, Hunyuan, Firefly), image (Flux, SDXL, gpt-image-1, Midjourney, Ideogram, Qwen), music (Suno, Stable Audio, MusicGen) and speech (ElevenLabs, OpenAI, Azure); vhtml providers --known',
       'generation-kinds': GENERATION_KINDS.join(', '),
-      'audio-mixing': 'gain, pan, fades, volume automation, transitions, ducking, loudness normalisation',
+      'audio-mixing': 'gain, pan, fades, volume automation, transitions, ducking, loudness normalisation; per-clip audio effects (gain, highpass, lowpass, compressor, echo, pitch, normalize, denoise) in the export mixdown',
       'authoring-programs': 'inline <script type="application/vnd.vhtml.program+javascript"> with inline and external (<data src>) data blocks; deterministic sandboxed materialisation',
       'authoring-params': 'repeatable CLI --param k=v merged into vhtml.ctx.params (external values override document params)',
       'time-remap': 'keyframed source-time curves (speed ramps) with exact easing interpolation',

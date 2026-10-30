@@ -136,6 +136,23 @@ function audioEffectFilters(clip: Clip): string[] {
         if (typeof gain === 'number') filters.push(`volume=${gain}`);
         break;
       }
+      case 'normalize': {
+        // Per-clip loudness normalisation (EBU R128, single pass). The target
+        // integrates loudness is authored in LUFS; broadcast -16 is the default.
+        const target = numberParam('lufs', numberParam('loudness', numberParam('I', -16)));
+        const tp = numberParam('tp', numberParam('truePeak', -1.5));
+        const lra = numberParam('lra', 11);
+        filters.push(`loudnorm=I=${target}:TP=${tp}:LRA=${lra}`);
+        break;
+      }
+      case 'denoise': {
+        // FFT denoiser: `strength` is the noise reduction amount in dB and
+        // `floor` the noise floor in dB (mirrors the afftdn parameter names).
+        const strength = numberParam('strength', numberParam('nr', numberParam('reduction', 12)));
+        const floor = numberParam('floor', numberParam('nf', -25));
+        filters.push(`afftdn=nr=${strength}:nf=${floor}`);
+        break;
+      }
       default:
         break;
     }
