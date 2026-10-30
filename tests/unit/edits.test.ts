@@ -236,3 +236,22 @@ test('clip.split scales inherited fades to the piece duration', () => {
   const validation = validateDocument({ specVersion: '1.1', project: session.project }, { checkFiles: false });
   assert.equal(validation.ok, true, validation.diagnostics.map((d) => d.message).join('\n'));
 });
+
+test('transition.add without params serializes (params normalized, no 500)', () => {
+  const session = new EditSession(load());
+  // Overlap hero into features so a transition window exists.
+  session.apply([{ op: 'clip.trim', clipId: 'a', duration: '2.5s' }]);
+  const result = session.apply([{
+    op: 'transition.add',
+    trackId: 'v',
+    transition: { fromClipId: 'a', toClipId: 'b', type: 'wipe', duration: '0.4s', direction: 'left' },
+  }]);
+  assert.equal(result.ok, true, result.diagnostics.map((d) => d.message).join('\n'));
+  const transition = session.project.timelines[0]!.tracks[0]!.transitions[0]!;
+  assert.deepEqual(transition.params, {});
+  // Serialization used to throw "Cannot convert undefined or null to object".
+  const output = serializeDocument({ specVersion: '1.1', project: session.project });
+  assert.match(output, /<transition[^>]*type="wipe"/);
+  const reparsed = parseVhtml(output, { file: 'D:/tmp/edit-transition.vhtml' });
+  assert.equal(reparsed.document.project.timelines[0]!.tracks[0]!.transitions.length, 1);
+});

@@ -203,6 +203,11 @@ main{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;min-he
 .clip.thumb:has(.filmstrip){background-image:none}
 .clip .filmstrip~.label,.clip .filmstrip~.sub{position:relative;z-index:1;text-shadow:0 1px 3px #000}
 .clip .color-tag{position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:6px 0 0 6px;pointer-events:none;z-index:3}
+.clip.drop-target{outline:2px solid var(--accent);outline-offset:-2px}
+.lib-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.lib-chip{border:1px solid var(--line);border-radius:8px;background:#0a1220;color:#eaf4ff;font-size:11px;padding:6px 10px;cursor:grab;user-select:none}
+.lib-chip:hover{border-color:var(--accent);background:rgba(110,231,255,.08)}
+.lib-chip:active{cursor:grabbing}
 .clip .sub{font-size:9px;opacity:.72;white-space:nowrap;overflow:hidden;pointer-events:none}
 .clip .handle{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize;background:rgba(255,255,255,.12);opacity:0;transition:.1s}
 .clip:hover .handle{opacity:1}
@@ -389,6 +394,7 @@ body.fullscreen-stage .inspector{display:none}
         <button data-tab="props" class="active" data-i18n="Properties">Properties</button>
         <button data-tab="element" data-i18n="Element">Element</button>
         <button data-tab="assets" data-i18n="Assets">Assets</button>
+        <button data-tab="effects" data-i18n="Effects">Effects</button>
         <button data-tab="captions" data-i18n="Captions">Captions</button>
         <button data-tab="storyboard" data-i18n="Storyboard">Storyboard</button>
       </div>
@@ -509,7 +515,7 @@ body.fullscreen-stage .inspector{display:none}
 <script>
 (function(){
   'use strict';
-  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
+  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
   var el = function(id){ return document.getElementById(id); };
   var stage = el('stage');
   var tracksEl = el('tracks');
@@ -792,7 +798,8 @@ body.fullscreen-stage .inspector{display:none}
       track.style.width = width + 'px';
       track.dataset.laneId = lane.id;
       track.addEventListener('dragover', function(event){
-        if (!event.dataTransfer.types || event.dataTransfer.types.indexOf('application/x-vhtml-asset') === -1) return;
+        var types = event.dataTransfer.types || [];
+        if (types.indexOf('application/x-vhtml-asset') === -1 && types.indexOf('application/x-vhtml-effect') === -1) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'copy';
         track.classList.add('drop-target');
@@ -801,6 +808,54 @@ body.fullscreen-stage .inspector{display:none}
       track.addEventListener('drop', function(event){
         event.preventDefault();
         track.classList.remove('drop-target');
+        var effectPayload = event.dataTransfer.getData('application/x-vhtml-effect');
+        if (effectPayload){
+          if (lane.locked) return toast('Lane is locked', true);
+          var payload;
+          try { payload = JSON.parse(effectPayload); } catch (error) { return; }
+          var dropTime = (event.clientX - track.getBoundingClientRect().left) / pps();
+          if (payload.kind === 'transition'){
+            // Find the pair of clips whose overlap window contains the drop.
+            var best = null;
+            var laneClips = lane.clips;
+            for (var ai = 0; ai < laneClips.length && !best; ai++){
+              for (var bi = 0; bi < laneClips.length; bi++){
+                if (ai === bi) continue;
+                var a = laneClips[ai];
+                var b = laneClips[bi];
+                if (a.start >= b.start) continue;
+                var overlapStart = Math.max(a.start, b.start);
+                var overlapEnd = Math.min(a.start + a.duration, b.start + b.duration);
+                if (overlapEnd - overlapStart > 0.02 && dropTime >= overlapStart && dropTime <= overlapEnd){
+                  best = { from: a, to: b, overlap: overlapEnd - overlapStart };
+                  break;
+                }
+              }
+            }
+            if (!best) return toast(t('Drop a transition onto the overlap between two clips'), true);
+            var transition = { fromClipId: best.from.id, toClipId: best.to.id, type: payload.type, duration: Number(Math.min(0.4, best.overlap).toFixed(4)) };
+            if (payload.type === 'wipe' || payload.type === 'slide') transition.direction = 'left';
+            if (payload.type === 'dip') transition.color = '#000000';
+            edit([{ op:'transition.add', trackId: lane.id, transition: transition }])
+              .then(function(){ toast(transitionLabel(payload.type) + t(' transition added')); })
+              .catch(function(error){ toast(error.message || 'Transition rejected', true); });
+            return;
+          }
+          // Effect chips dropped on the track land on the clip under the drop.
+          var target = null;
+          lane.clips.forEach(function(candidate){
+            if (dropTime >= candidate.start && dropTime <= candidate.start + candidate.duration) target = candidate;
+          });
+          if (!target) return toast(t('Drop onto a clip'), true);
+          if (payload.kind === 'effect'){
+            if (isVisualClip(target)) addEffect(target, payload.type);
+            else toast(t('Visual effects need a visual clip'), true);
+          } else if (target.kind === 'video' || target.kind === 'audio'){
+            if (payload.type === 'ducking') addDuckingToClip(target);
+            else addAudioEffectToClip(target, payload.type);
+          }
+          return;
+        }
         var assetId = event.dataTransfer.getData('application/x-vhtml-asset') || event.dataTransfer.getData('text/plain');
         if (!assetId) return;
         var rect = track.getBoundingClientRect();
@@ -857,6 +912,30 @@ body.fullscreen-stage .inspector{display:none}
           tagStrip.style.background = clip.metadata.clipColor;
           block.appendChild(tagStrip);
         }
+        block.addEventListener('dragover', function(event){
+          if (!event.dataTransfer || !event.dataTransfer.types || event.dataTransfer.types.indexOf('application/x-vhtml-effect') === -1) return;
+          event.preventDefault();
+          event.dataTransfer.dropEffect = 'copy';
+          block.classList.add('drop-target');
+        });
+        block.addEventListener('dragleave', function(){ block.classList.remove('drop-target'); });
+        block.addEventListener('drop', function(event){
+          if (!event.dataTransfer || !event.dataTransfer.getData('application/x-vhtml-effect')) return;
+          event.preventDefault();
+          event.stopPropagation();
+          block.classList.remove('drop-target');
+          var payload;
+          try { payload = JSON.parse(event.dataTransfer.getData('application/x-vhtml-effect')); } catch (error) { return; }
+          if (lane.locked) return toast('Lane is locked', true);
+          if (payload.kind === 'effect'){
+            if (!isVisualClip(clip)) return toast(t('Visual effects need a visual clip'), true);
+            addEffect(clip, payload.type);
+          } else if (payload.kind === 'audio'){
+            if (clip.kind !== 'video' && clip.kind !== 'audio') return toast(t('Audio effects need a video or audio clip'), true);
+            if (payload.type === 'ducking') addDuckingToClip(clip);
+            else addAudioEffectToClip(clip, payload.type);
+          }
+        });
         if (chips.length){
           var chip = document.createElement('div');
           chip.className = 'badge-chip';
@@ -993,6 +1072,7 @@ body.fullscreen-stage .inspector{display:none}
     for (var i=0;i<tabs.length;i++) tabs[i].classList.toggle('active', tabs[i].dataset.tab === state.tab);
     box.innerHTML = '';
     if (state.tab === 'assets'){ renderAssets(box); return; }
+    if (state.tab === 'effects'){ renderEffectsLibrary(box); return; }
     if (state.tab === 'captions'){ renderCaptions(box); return; }
     if (state.tab === 'storyboard'){ renderStoryboard(box); return; }
     if (state.tab === 'element'){ renderElement(box); return; }
@@ -1307,7 +1387,7 @@ body.fullscreen-stage .inspector{display:none}
   function renderAudioEffectsSection(box, clip){
     var title = document.createElement('div');
     title.className = 'section-title';
-    title.textContent = 'Audio effects';
+    title.textContent = t('Audio effects');
     box.appendChild(title);
     (clip.audioEffects || []).forEach(function(fx){
       var head = document.createElement('div');
@@ -1360,36 +1440,11 @@ body.fullscreen-stage .inspector{display:none}
     add.addEventListener('change', function(){
       if (!add.value) return;
       if (AUDIO_EFFECT_CATALOG[add.value]){
-        var preset = AUDIO_EFFECT_CATALOG[add.value];
-        var effect = {
-          id: 'fx-audio-' + add.value + '-' + Date.now().toString(36),
-          type: add.value,
-          params: JSON.parse(JSON.stringify(preset.params)),
-          enabled: true,
-        };
-        edit([{ op:'effect.add', clipId:clip.id, effect:effect, audio:true }])
-          .then(function(){ toast(t('Audio effect added: ') + effectLabel(add.value)); })
-          .catch(function(){});
+        addAudioEffectToClip(clip, add.value);
         add.value = '';
         return;
       }
-      var audioLanes = state.model.lanes.filter(function(lane){ return lane.type === 'audio'; });
-      if (!audioLanes.length){
-        toast('Ducking needs a sidechain audio lane', true);
-        add.value = '';
-        return;
-      }
-      var params = JSON.parse(JSON.stringify(DUCKING_DEFAULTS));
-      params['sidechain-track'] = audioLanes[0].id;
-      var effect = {
-        id: 'fx-ducking-' + Date.now().toString(36),
-        type: 'ducking',
-        params: params,
-        enabled: true,
-      };
-      edit([{ op:'effect.add', clipId:clip.id, effect:effect, audio:true }])
-        .then(function(){ toast('Ducking added — sidechain ' + params['sidechain-track']); })
-        .catch(function(){});
+      addDuckingToClip(clip);
       add.value = '';
     });
     addWrap.appendChild(add);
@@ -1907,6 +1962,65 @@ body.fullscreen-stage .inspector{display:none}
     'echo': { params:{ inGain:0.8, outGain:0.9, delay:120, decay:0.35 }, label:'Echo / reverb' },
     'pitch': { params:{ semitones:0 }, label:'Pitch shift (voice)' },
   };
+  var TRANSITION_CATALOG = ['crossfade', 'fade', 'dip', 'wipe', 'slide', 'zoom', 'blur'];
+  var TRANSITION_LABELS = {
+    'crossfade': 'Crossfade',
+    'fade': 'Fade to black',
+    'dip': 'Dip to color',
+    'wipe': 'Wipe',
+    'slide': 'Slide',
+    'zoom': 'Zoom',
+    'blur': 'Blur transition',
+  };
+  function transitionLabel(type){
+    return TRANSITION_LABELS[type] ? t(TRANSITION_LABELS[type]) : type;
+  }
+  function addAudioEffectToClip(clip, type){
+    var preset = AUDIO_EFFECT_CATALOG[type];
+    if (!preset) return;
+    var effect = {
+      id: 'fx-audio-' + type + '-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36),
+      type: type,
+      params: JSON.parse(JSON.stringify(preset.params)),
+      enabled: true,
+    };
+    edit([{ op:'effect.add', clipId:clip.id, effect:effect, audio:true }])
+      .then(function(){ toast(t('Audio effect added: ') + effectLabel(type)); })
+      .catch(function(){});
+  }
+  function addDuckingToClip(clip){
+    var audioLanes = state.model.lanes.filter(function(lane){ return lane.type === 'audio'; });
+    if (!audioLanes.length){
+      toast('Ducking needs a sidechain audio lane', true);
+      return;
+    }
+    var params = JSON.parse(JSON.stringify(DUCKING_DEFAULTS));
+    params['sidechain-track'] = audioLanes[0].id;
+    var effect = {
+      id: 'fx-ducking-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36),
+      type: 'ducking',
+      params: params,
+      enabled: true,
+    };
+    edit([{ op:'effect.add', clipId:clip.id, effect:effect, audio:true }])
+      .then(function(){ toast('Ducking added — sidechain ' + params['sidechain-track']); })
+      .catch(function(){});
+  }
+  function applyEffectToSelection(type){
+    // CapCut-style batch apply: with a multi-selection the effect lands on
+    // every selected visual clip, not just the primary one.
+    var targets = selectionIds().filter(function(id){
+      var found = clipById(id);
+      return found && isVisualClip(found.clip) && !found.lane.locked;
+    });
+    var primary = selectedClip();
+    if (targets.length <= 1 && primary) targets = [primary.clip.id];
+    targets.forEach(function(id){
+      var entry = clipById(id);
+      if (entry) addEffect(entry.clip, type);
+    });
+    if (targets.length > 1) toast(effectLabel(type) + t(' applied to ') + targets.length + t(' clip(s)'));
+  }
 
   function renderEffectsSection(box, clip){
     var title = document.createElement('div');
@@ -1985,18 +2099,7 @@ body.fullscreen-stage .inspector{display:none}
     });
     add.addEventListener('change', function(){
       if (!add.value) return;
-      // CapCut-style batch apply: with a multi-selection the effect lands on
-      // every selected visual clip, not just the primary one.
-      var targets = selectionIds().filter(function(id){
-        var found = clipById(id);
-        return found && isVisualClip(found.clip) && !found.lane.locked;
-      });
-      if (targets.length <= 1) targets = [clip.id];
-      targets.forEach(function(id){
-        var entry = clipById(id);
-        if (entry) addEffect(entry.clip, add.value);
-      });
-      if (targets.length > 1) toast(effectLabel(add.value) + t(' applied to ') + targets.length + t(' clip(s)'));
+      applyEffectToSelection(add.value);
       add.value = '';
     });
     addWrap.appendChild(add);
@@ -2485,6 +2588,83 @@ body.fullscreen-stage .inspector{display:none}
     state.element.computed = elementComputed(target);
     state.element.html = target.innerHTML || state.element.html;
     if (state.tab === 'element') renderInspector();
+  }
+
+  // ---------- effects / transitions library (CapCut-style palette) ----------
+
+  function effectDragPayload(kind, type){
+    return JSON.stringify({ kind: kind, type: type });
+  }
+
+  function makeLibraryChip(kind, type, label){
+    var chip = document.createElement('div');
+    chip.className = 'lib-chip';
+    chip.draggable = true;
+    chip.textContent = label;
+    chip.title = t('Drag onto a clip on the timeline, or click to apply to the selection');
+    chip.addEventListener('dragstart', function(event){
+      event.dataTransfer.setData('application/x-vhtml-effect', effectDragPayload(kind, type));
+      event.dataTransfer.setData('text/plain', type);
+      event.dataTransfer.effectAllowed = 'copy';
+    });
+    chip.onclick = function(){
+      if (kind === 'transition'){
+        addTransition();
+        return;
+      }
+      if (kind === 'audio'){
+        var primary = selectedClip();
+        if (!primary || (primary.clip.kind !== 'video' && primary.clip.kind !== 'audio')){
+          return toast(t('Select a video or audio clip first'), true);
+        }
+        addAudioEffectToClip(primary.clip, type);
+        return;
+      }
+      applyEffectToSelection(type);
+    };
+    return chip;
+  }
+
+  function renderEffectsLibrary(box){
+    var hint = document.createElement('div');
+    hint.className = 'element-note';
+    hint.textContent = t('Drag a chip onto a timeline clip (effects) or onto the overlap between two clips (transitions). Click applies to the current selection.');
+    box.appendChild(hint);
+
+    var visualTitle = document.createElement('div');
+    visualTitle.className = 'section-title';
+    visualTitle.textContent = t('Visual effects');
+    box.appendChild(visualTitle);
+    var visualGrid = document.createElement('div');
+    visualGrid.className = 'lib-grid';
+    Object.keys(EFFECT_CATALOG).forEach(function(type){
+      visualGrid.appendChild(makeLibraryChip('effect', type, effectLabel(type)));
+    });
+    box.appendChild(visualGrid);
+
+    var audioTitle = document.createElement('div');
+    audioTitle.className = 'section-title';
+    audioTitle.textContent = t('Audio effects');
+    box.appendChild(audioTitle);
+    var audioGrid = document.createElement('div');
+    audioGrid.className = 'lib-grid';
+    Object.keys(AUDIO_EFFECT_CATALOG).forEach(function(type){
+      audioGrid.appendChild(makeLibraryChip('audio', type, effectLabel(type)));
+    });
+    audioGrid.appendChild(makeLibraryChip('audio', 'ducking', t('Ducking (sidechain)')));
+    box.appendChild(audioGrid);
+
+    var transitionTitle = document.createElement('div');
+    transitionTitle.className = 'section-title';
+    transitionTitle.textContent = t('Transitions');
+    box.appendChild(transitionTitle);
+    var transitionGrid = document.createElement('div');
+    transitionGrid.className = 'lib-grid';
+    TRANSITION_CATALOG.forEach(function(type){
+      transitionGrid.appendChild(makeLibraryChip('transition', type, transitionLabel(type)));
+    });
+    box.appendChild(transitionGrid);
+    box.appendChild(htmlNode('<div class="hint">' + t('Transitions need two overlapping clips; the drop lands inside their overlap window with a 0.4s (clamped) duration.') + '</div>'));
   }
 
   function renderAssets(box){
@@ -3442,6 +3622,32 @@ body.fullscreen-stage .inspector{display:none}
     tip.style.top = Math.max(4, clientY - 30) + 'px';
   }
   function hideDragTip(){ el('drag-tip').style.display = 'none'; }
+
+  // Auto-scroll the timeline when a drag approaches the viewport edges
+  // (CapCut/Premiere behaviour): an interval pans the view while the pointer
+  // stays in the edge zone; drag deltas keep working because previews are
+  // anchored to content coordinates.
+  function stopAutoScroll(){
+    if (state.autoScrollTimer){ clearInterval(state.autoScrollTimer); state.autoScrollTimer = null; }
+    state.autoScrollDir = 0;
+  }
+  function ensureAutoScroll(event){
+    var scroll = el('timeline-scroll');
+    var rect = scroll.getBoundingClientRect();
+    var edge = 48;
+    var dir = 0;
+    if (event.clientX < rect.left + edge) dir = -1;
+    else if (event.clientX > rect.right - edge) dir = 1;
+    if (state.autoScrollDir !== dir){
+      stopAutoScroll();
+      state.autoScrollDir = dir;
+      if (dir){
+        state.autoScrollTimer = setInterval(function(){
+          scroll.scrollLeft += dir * 14;
+        }, 30);
+      }
+    }
+  }
 
   // ---------- layer ordering ----------
 
@@ -4809,6 +5015,9 @@ body.fullscreen-stage .inspector{display:none}
       if (Math.abs(delta) < 0.0001) return;
       drag.moved = true;
       var rate = pps();
+      if (drag.type === 'move' || drag.type === 'trim-left' || drag.type === 'trim-right' || drag.type === 'roll' || drag.type === 'slip'){
+        ensureAutoScroll(event);
+      }
       if (drag.type === 'move' || drag.type === 'trim-left' || drag.type === 'trim-right'){
         if (drag.type === 'move') showDragTip(fmtTime(Math.max(0, drag.originalStart + delta)), event.clientX, event.clientY);
         else if (drag.type === 'trim-left') showDragTip('start ' + fmtTime(Math.max(0, drag.originalStart + delta)), event.clientX, event.clientY);
@@ -4860,6 +5069,7 @@ body.fullscreen-stage .inspector{display:none}
       if (!state.dragging) return;
       var drag = state.dragging;
       state.dragging = null;
+      stopAutoScroll();
       clearDrop();
       showSnapGuide(null);
       hideDragTip();

@@ -172,7 +172,8 @@ validated Core Model edit (undoable, saved atomically).
 - **Keyframe diamonds** mark animation keyframes on the clip; edit them in the
   Properties panel.
 - Magnetic snapping to frames, playhead, markers, 0/end and every other clip
-  edge; hold `Shift` to bypass. `Ctrl`+wheel zooms around the cursor.
+  edge; hold `Shift` to bypass. `Ctrl`+wheel zooms around the cursor. Dragging
+  a clip near the timeline's left/right edge **auto-scrolls** the view.
 - Transitions open a dialog with type (crossfade, fade, dip, wipe, slide, zoom,
   blur), duration, direction and dip color.
 - **Lane drag reorder**: drag a lane header vertically past a neighbour's
@@ -207,6 +208,21 @@ Select a clip to edit everything the model supports:
   tint, color-overlay, chroma-key, rounded, mask, filter, css) with friendly
   labels, per-parameter editing, enable/disable and remove. With a
   multi-selection, adding an effect applies it to the whole selection.
+
+## Effects & transitions library
+
+The **Effects** tab is a CapCut-style palette of every runtime effect, audio
+effect and transition as draggable chips.
+
+- **Drag** an effect chip onto a timeline clip to apply it; drag an audio chip
+  onto a video/audio clip; drag a transition chip onto the overlap window
+  between two clips — the transition lands there with a 0.4s duration clamped
+  to the overlap (the dialog is still available for type, direction and dip
+  color).
+- **Click** a chip to apply it to the current selection (effects apply to
+  every selected visual clip).
+- Chips come straight from the runtime catalogs, so a new built-in effect type
+  appears in the library automatically (guarded by unit tests).
 
 ## Assets
 

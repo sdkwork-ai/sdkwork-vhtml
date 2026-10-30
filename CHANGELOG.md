@@ -2,6 +2,29 @@
 
 ## 1.1.4
 
+### Studio: professional-editing polish, round 4 (CapCut alignment)
+
+- **Effects & transitions library**: a new Effects tab renders every runtime
+  visual effect, audio effect and transition as draggable chips (33 chips
+  from the runtime catalogs — new built-in types appear automatically, pinned
+  by the existing catalog guard tests). Drag an effect chip onto a clip to
+  apply it, an audio chip onto a video/audio clip, or a transition chip onto
+  the overlap window between two clips (duration 0.4s clamped to the
+  overlap); clicking a chip applies it to the current selection. Bad drops
+  get specific toasts ("drop onto the overlap between two clips").
+- **Drag auto-scroll**: moving/trimming/rolling/slipping a clip near the
+  timeline's left or right edge pans the view (48px edge zone, 30fps interval)
+  so long timelines stay editable without zooming out.
+- **Fixed: adding a transition via the edit API broke the save round-trip.**
+  `transition.add` accepted operations without `params`, but the stored
+  transition kept `params: undefined` and the serializer threw "Cannot
+  convert undefined or null to object" — the transition landed in the model
+  and on screen while every save failed with a 500. The op input type now
+  treats renderer-defaulted fields (params/easing/direction/color) as
+  optional, `transitionAdd` normalizes them (`params` defaults to `{}`), and
+  `paramAttrs` is defensive. Unit test: add without params → serialize →
+  re-parse.
+
 ### Studio: professional-editing polish, round 3 (CapCut alignment)
 
 - **Fixed: `clip.split` id and fade semantics (core).** The right piece kept

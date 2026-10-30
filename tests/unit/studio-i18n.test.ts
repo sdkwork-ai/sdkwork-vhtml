@@ -68,3 +68,12 @@ test('Studio UI offers the parameterised audio effect types', () => {
       `audio effect "${type}" is implemented by the mixer but missing from the Studio palette`);
   }
 });
+
+test('Studio exposes the effects/transitions library tab', () => {
+  assert.ok(STUDIO_HTML.includes('data-tab="effects"'), 'Effects tab button present');
+  // Every canon transition type is offered as a draggable library chip.
+  for (const type of ['crossfade', 'fade', 'dip', 'wipe', 'slide', 'zoom', 'blur']) {
+    assert.ok(STUDIO_HTML.includes(`'${type}'`), `transition "${type}" in the library`);
+  }
+  assert.ok(STUDIO_HTML.includes('application/x-vhtml-effect'), 'drag-drop payload channel present');
+});

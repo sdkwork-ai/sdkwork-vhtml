@@ -199,7 +199,7 @@ export type EditOperation =
       idPrefix?: string;
     }
   | { op: 'clip.set'; clipId: string; props: ClipSetProps }
-  | { op: 'transition.add'; trackId: string; transition: Omit<Transition, 'id' | 'trackId' | 'duration'> & { id?: string; duration: TimeLike } }
+  | { op: 'transition.add'; trackId: string; transition: Partial<Omit<Transition, 'id' | 'trackId' | 'duration'>> & { fromClipId: string; toClipId: string; type: Transition['type']; duration: TimeLike; id?: string } }
   | { op: 'transition.remove'; transitionId: string }
   | { op: 'animation.add'; animation: Animation; clipId?: string }
   | { op: 'animation.remove'; animationId: string; clipId?: string }
@@ -2341,10 +2341,16 @@ class Editor {
       return;
     }
     found.track.transitions.push({
+      easing: 'ease-in-out',
+      direction: 'left',
+      color: '#000000',
       ...structuredClone(operation.transition),
       id,
       trackId: found.track.id,
       duration,
+      // Authored transitions may omit params; the serializer and renderer
+      // both assume the record exists.
+      params: { ...(operation.transition.params ?? {}) },
     });
     this.changed.push(id);
   }

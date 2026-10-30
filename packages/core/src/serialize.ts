@@ -84,7 +84,8 @@ function styleDeclarations(style: Record<string, string> | undefined): string | 
   return entries.map(([name, value]) => `${name}:${value}`).join(';');
 }
 
-function paramAttrs(params: Record<string, string | number | boolean>): string {
+function paramAttrs(params: Record<string, string | number | boolean> | undefined): string {
+  if (!params) return '';
   return Object.entries(params)
     .map(([name, value]) => attr(name, typeof value === 'number' ? number(value) : value))
     .join('');
