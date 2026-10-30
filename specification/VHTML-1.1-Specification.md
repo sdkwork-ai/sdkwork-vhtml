@@ -549,7 +549,7 @@ MUST 区分：
 | `clip.slip` | 源窗口平移，项目时间不变 |
 | `clip.slide` | 保持左右邻接外边界，移动 Clip 并调整邻接 Clip |
 | `clip.roll` | 移动相邻剪辑点，改变两侧源窗口 |
-| `clip.speed` | 改变 speed，保持源窗口，重新计算 duration |
+| `clip.speed` | 改变 speed，保持源窗口，重新计算 duration；可选 `reverse` 布尔同操作切换反向播放（缺省不变更 `reverse`） |
 | `clip.freeze` | 固定源时间；可用 `at` 先分割再冻结右侧 |
 | `clip.set` | 修改表现属性（不修改时序） |
 | `transition.add/remove` | 增加/删除转场并夹取到重叠 |

@@ -80,6 +80,11 @@ test('full functional sweep: every editing primitive through the Studio pipeline
     await apply([{ op: 'clip.speed', clipId: 'b', speed: 2 }]);
     assert.equal(clips()[1]!.duration, 0.75, '2x halves the post-split duration (1.5s -> 0.75s)');
     await apply([{ op: 'clip.speed', clipId: 'b', speed: 1 }]);
+    // 5b. reverse toggle (clip.speed's additive reverse flag) keeps timing
+    const reversed = await apply([{ op: 'clip.speed', clipId: 'b', speed: 1, reverse: true }]);
+    assert.equal(studio.project().timelines[0]!.tracks[0]!.clips.find((clip) => clip.id === 'b')!.reverse, true, 'reverse flag set');
+    void reversed;
+    await apply([{ op: 'clip.speed', clipId: 'b', speed: 1, reverse: false }]);
     // 6. timeremap (ramp)
     await apply([{ op: 'clip.timeremap', clipId: 'b', keyframes: [
       { at: '0s', source: '0s' }, { at: '1.5s', source: '1.5s' }, { at: '3s', source: '3s' },

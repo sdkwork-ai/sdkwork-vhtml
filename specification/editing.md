@@ -15,7 +15,7 @@ type EditOperation =
   | { op: 'clip.slip'; clipId: string; delta: Time }
   | { op: 'clip.slide'; clipId: string; delta: Time }
   | { op: 'clip.roll'; clipId: string; edge: 'start' | 'end'; delta: Time }
-  | { op: 'clip.speed'; clipId: string; speed: number | string }
+  | { op: 'clip.speed'; clipId: string; speed: number | string; reverse?: boolean }
   | { op: 'clip.freeze'; clipId: string; at?: Time; sourceTime?: Time }
   | { op: 'clip.duplicate'; clipId: string; id?: string; start?: Time }
   | { op: 'clip.detachAudio'; clipId: string; laneId?: string }
@@ -91,6 +91,11 @@ out = in + duration * speed
 - 改变起点必须同时改变 `in`（正向）或 `out`（反向）。
 - 任何操作不得使 `in < 0` 或 `out > asset.duration`。
 - 素材时长未知时允许操作，但导出时必须由解码器验证。
+- `clip.speed` 的可选 `reverse` 布尔（1.1.4）：`true` 开启反向播放（`mediaTime =
+  in + (duration - localTime) * speed`），`false` 关闭；缺省时不变更 `reverse`。
+  反向不改变 Source 窗口不变量，`clip.split` / `clip.trim` 已按 `reverse`
+  分支保持 `in`/`out` 一致。反向与 time remap 互斥：`clip.speed` 会先清除
+  remap（既有告警语义）。
 
 ## 5. Split 的动画拆分
 

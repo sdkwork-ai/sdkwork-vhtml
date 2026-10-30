@@ -307,6 +307,18 @@ body.fullscreen-stage .inspector{display:none}
 .help-table td:first-child{color:var(--accent);font-variant-numeric:tabular-nums;white-space:nowrap;width:40%}
 .caption-style-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .caption-style-grid .full{grid-column:1/-1}
+.mixer-row{display:grid;grid-template-columns:minmax(120px,1.2fr) 34px minmax(140px,1fr) minmax(120px,.9fr);gap:10px;align-items:center;border:1px solid var(--line);border-radius:9px;background:#0a1220;padding:8px 10px;margin-bottom:8px}
+.mixer-row b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.mixer-row small{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.mixer-row .lvl{display:flex;align-items:center;gap:7px;font-size:10px;color:var(--muted);min-width:0}
+.mixer-row .lvl input{flex:1;min-width:0;padding:2px}
+.mixer-row .lvl output{width:44px;text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
+.mixer-row button{padding:3px 0;width:30px;font-size:10px}
+.mixer-row button.on{border-color:var(--warn);color:var(--warn)}
+.mixer-row button.lockbtn.on{border-color:var(--err);color:var(--err)}
+.mixer-master{border-color:#23395c;background:#0c1523}
+body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
+#shuttle-badge{color:var(--warn);border-color:#5d4a1e;background:#2a2210}
 @media (max-width:1100px){main{grid-template-columns:minmax(0,1fr) 250px}}
 </style>
 </head>
@@ -345,7 +357,8 @@ body.fullscreen-stage .inspector{display:none}
       <tr><td>Ctrl+C / X / V</td><td>Copy / cut / paste clipboard</td></tr>
       <tr><td>I / O</td><td>Set in / out point</td></tr>
       <tr><td>M</td><td>Add marker</td></tr>
-      <tr><td>J / K / L</td><td>Back 1s / pause / forward 1s</td></tr>
+      <tr><td>J / L</td><td>Shuttle reverse / forward (repeat = faster, up to 8×)</td></tr>
+      <tr><td>K</td><td>Stop shuttle / pause</td></tr>
       <tr><td>← / →</td><td>Step one frame</td></tr>
       <tr><td>Home / End</td><td>Jump to start / end</td></tr>
       <tr><td>Shift+, / Shift+.</td><td>Jump to previous / next marker</td></tr>
@@ -379,7 +392,9 @@ body.fullscreen-stage .inspector{display:none}
       <span class="timecode" id="time" title="Click to type a time (1:23.5, 00:01:02:12)">00:00.000</span>
       <input id="time-input" placeholder="1:23.5" />
       <span class="badge" id="framebadge">frame 0</span>
+      <span class="badge" id="shuttle-badge" style="display:none"></span>
       <div class="spacer"></div>
+      <button id="loop" title="Loop playback — In→Out range when set, else the whole timeline">🔁 Loop</button>
       <button id="guides-btn" title="Toggle composition guides (G)">⊞ Guides</button>
       <button id="fullscreen" title="Fullscreen preview (F)">⛶</button>
       <button id="snapshot" title="Render the current frame to renders/ as PNG">📷 Frame</button>
@@ -422,6 +437,7 @@ body.fullscreen-stage .inspector{display:none}
     <select id="add-lane" title="Add a lane"><option value="">＋ Lane…</option><option value="video">Video lane</option><option value="overlay">Overlay lane</option><option value="audio">Audio lane</option><option value="caption">Caption lane</option></select>
     <div class="sep"></div>
     <button id="snap" class="active" title="Magnetic snapping (hold Shift to bypass)">Snap</button>
+    <button id="mixer" title="Audio mixer — per-lane volume, pan, mute and solo">🎚 Mixer</button>
     <button id="element-mode" title="Pick any HTML element in the player (E)">⌖ Element</button>
     <button id="fit" title="Fit timeline (0)">Fit</button>
     <div class="spacer"></div>
@@ -512,10 +528,20 @@ body.fullscreen-stage .inspector{display:none}
     <div class="modal-foot"><button id="tr-remove" class="danger">Remove</button><button id="tr-save" class="primary">Save</button></div>
   </div>
 </div>
+<div class="modal" id="mixer-modal">
+  <div class="modal-card" style="width:min(640px,94vw)">
+    <div class="modal-head"><h3 data-i18n="Audio mixer">Audio mixer</h3><button id="mixer-close">✕</button></div>
+    <div class="modal-body" style="display:block;max-height:64vh;overflow:auto"><div id="mixer-rows"></div></div>
+    <div class="modal-foot">
+      <span class="hint" style="margin-right:auto" data-i18n="Volume/pan write to the lane — honored in preview and export">Volume/pan write to the lane — honored in preview and export</span>
+      <button id="mixer-done" class="primary" data-i18n="Done">Done</button>
+    </div>
+  </div>
+</div>
 <script>
 (function(){
   'use strict';
-  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
+  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
   var el = function(id){ return document.getElementById(id); };
   var stage = el('stage');
   var tracksEl = el('tracks');
@@ -635,6 +661,17 @@ body.fullscreen-stage .inspector{display:none}
     if (kind === 'caption' || kind === 'data' || kind === 'scene' || kind === 'timeline') return false;
     if (kind === 'audio') return asset.kind === 'audio' || asset.kind === 'video';
     return asset.kind === 'video' || asset.kind === 'image' || asset.kind === 'svg';
+  }
+
+  // Source media length of a clip's asset (seconds), when the probe knows it.
+  // Rational values arrive as {num,den}; numbers pass through.
+  function assetSourceDuration(clip){
+    if (!clip || !clip.ref) return null;
+    var asset = assetById(clip.ref) || assetById(clip.ref.replace(/^(asset|gen):/, ''));
+    if (!asset || asset.duration === undefined || asset.duration === null) return null;
+    var duration = asset.duration;
+    if (typeof duration === 'object' && duration.num !== undefined) duration = duration.den ? duration.num / duration.den : 0;
+    return Number(duration) || null;
   }
 
   function updateHistory(body){
@@ -873,7 +910,9 @@ body.fullscreen-stage .inspector{display:none}
         block.dataset.clipId = clip.id;
         block.title = clip.id + ' · ' + clip.kind + ' · ' + clip.start.toFixed(3) + 's + ' + clip.duration.toFixed(3) + 's' +
           (clip.speed !== 1 ? ' · ' + clip.speed.toFixed(2) + '×' : '') +
-          (clip.hasTimeRemap ? ' · speed ramp' : '');
+          (clip.reverse ? ' · reversed' : '') +
+          (clip.hasTimeRemap ? ' · speed ramp' : '') +
+          ' — double-click to rename';
         var asset = clip.ref ? (assetById(clip.ref) || assetById(clip.ref.replace(/^(asset|gen):/, ''))) : null;
         var filmstrip = null;
         if (asset && (asset.kind === 'image' || asset.kind === 'svg') && asset.url && asset.exists !== false){
@@ -901,6 +940,7 @@ body.fullscreen-stage .inspector{display:none}
         }
         var chips = [];
         if (clip.speed !== 1) chips.push(clip.speed.toFixed(2).replace(/\\.?0+$/,'') + '×');
+        if (clip.reverse) chips.push('rev');
         if (clip.hasTimeRemap) chips.push('ramp');
         if (clip.muted) chips.push('muted');
         if (clip.freeze !== undefined && clip.freeze !== null) chips.push('freeze');
@@ -948,8 +988,8 @@ body.fullscreen-stage .inspector{display:none}
           wave.dataset.peaksFor = asset ? asset.id : (clip.ref || '');
           wave.dataset.clipId = clip.id;
           block.appendChild(wave);
-        }
-        if (clip.kind === 'audio'){
+          // CapCut-style volume rubber band on any sounding clip (audio and
+          // unmuted video alike); double-click adds envelope points.
           var volumeLine = document.createElement('div');
           volumeLine.className = 'volume-line';
           volumeLine.dataset.volumeFor = clip.id;
@@ -1041,6 +1081,13 @@ body.fullscreen-stage .inspector{display:none}
             block.appendChild(diamond);
           });
         });
+        block.ondblclick = function(event){
+          // CapCut-style inline rename: double-click the clip body.
+          if (event.target.closest('.handle') || event.target.closest('.volume-line') || event.target.closest('.volume-dot') || event.target.closest('.kf-diamond')) return;
+          var name = window.prompt('Clip name', clip.label || '');
+          if (name === null || !name.trim() || name === clip.label) return;
+          edit([{ op:'clip.set', clipId:clip.id, props:{ name:name.trim() } }]).catch(function(){});
+        };
         block.oncontextmenu = function(event){ event.preventDefault(); event.stopPropagation(); if (selectionIds().indexOf(clip.id) < 0) selectOnly(clip.id); renderTimeline(); renderInspector(); openContextMenu(event, { type:'clip', clip:clip, lane:lane }); };
         track.appendChild(block);
       });
@@ -1114,6 +1161,13 @@ body.fullscreen-stage .inspector{display:none}
         presets.appendChild(button);
       });
       box.appendChild(presets);
+      var reverseToggle = document.createElement('button');
+      reverseToggle.textContent = clip.reverse ? '◀▶ ' + t('Reversed — click to restore forward') : '◀▶ ' + t('Reverse playback');
+      reverseToggle.title = t('Play the clip backwards (CapCut-style reverse); disables any speed ramp');
+      reverseToggle.className = clip.reverse ? 'active' : '';
+      reverseToggle.style.marginTop = '4px';
+      reverseToggle.onclick = function(){ toggleClipReverse([clip.id]); };
+      box.appendChild(reverseToggle);
       box.appendChild(field(t('Custom speed'), 'number', clip.speed, 0.01, function(value){
         edit([{ op:'clip.speed', clipId:clip.id, speed:parseFloat(value) }]);
       }));
@@ -3328,6 +3382,7 @@ body.fullscreen-stage .inspector{display:none}
         ctxItem(menu, t('Speed ramp: fast–slow–fast'), '', function(){ applySpeedRamp(clip, 'fastslow'); }, selected.length !== 1);
         if (clip.hasTimeRemap) ctxItem(menu, t('Clear speed ramp'), '', function(){ edit([{ op:'clip.timeremap.clear', clipId:clip.id }]).catch(function(){}); });
         ctxItem(menu, t('Freeze frame at playhead'), '', function(){ freezeAtPlayhead(clip); }, locked);
+        ctxItem(menu, clip.reverse ? t('Restore forward playback') : t('Reverse clip (倒放)'), '', function(){ toggleClipReverse(selected); }, locked);
       }
       if (clip.kind === 'video' || clip.kind === 'audio'){
         ctxSep(menu);
@@ -3442,6 +3497,13 @@ body.fullscreen-stage .inspector{display:none}
     } else if (target.type === 'lane'){
       var lane2 = target.lane;
       ctxTitle(menu, lane2.name || lane2.id);
+      ctxItem(menu, t('Select all clips on this lane'), '', function(){
+        if (!lane2.clips.length) return toast(t('This lane has no clips'), true);
+        state.selection = lane2.clips.map(function(clip){ return clip.id; });
+        state.selected = state.selection[state.selection.length - 1];
+        renderTimeline(); renderInspector();
+        toast(t('Selected ') + state.selection.length + t(' clip(s)'));
+      }, !lane2.clips.length);
       ctxItem(menu, t('Rename lane'), '', function(){
         var name = window.prompt('Lane name', lane2.name || lane2.id);
         if (name === null || !name.trim()) return;
@@ -3452,8 +3514,8 @@ body.fullscreen-stage .inspector{display:none}
       ctxItem(menu, lane2.locked ? 'Unlock lane' : 'Lock lane', '', function(){ edit([{ op:'track.set', trackId:lane2.id, props:{ locked:!lane2.locked } }]).catch(function(){}); });
       if (lane2.type === 'audio'){
         ctxSep(menu);
-        ctxItem(menu, t('Lane volume… (') + (lane2.volume !== undefined ? lane2.volume : 1) + ')', '', function(){ setLaneLevel(lane2, 'volume'); });
-        ctxItem(menu, t('Lane pan… (') + (lane2.pan !== undefined ? lane2.pan : 0) + ')', '', function(){ setLaneLevel(lane2, 'pan'); });
+        ctxItem(menu, t('Open in mixer…') + t(' (vol ') + (lane2.volume !== undefined ? lane2.volume : 1) + ')', '', function(){ openMixer(lane2.id); });
+        ctxItem(menu, t('Lane pan — open mixer…'), '', function(){ openMixer(lane2.id); });
       }
       ctxSep(menu);
       ctxItem(menu, t('Add ') + lane2.type + ' lane above', '', function(){ addLane(lane2.type, lane2.order); });
@@ -3490,6 +3552,24 @@ body.fullscreen-stage .inspector{display:none}
 
   function setClipSpeed(ids, speed){
     edit(ids.map(function(id){ return { op:'clip.speed', clipId:id, speed:speed }; })).catch(function(){});
+  }
+
+  // CapCut-style reverse: keeps speed and the source window, flips playback
+  // direction (clip.speed's reverse flag; the runtime frame-seeks media).
+  function toggleClipReverse(ids){
+    var ops = [];
+    ids.forEach(function(id){
+      var found = clipById(id);
+      if (!found) return;
+      var clip = found.clip;
+      if (clip.kind !== 'video' && clip.kind !== 'audio') return;
+      if (found.lane.locked) return;
+      ops.push({ op:'clip.speed', clipId:id, speed:clip.speed, reverse:!clip.reverse });
+    });
+    if (!ops.length) return toast(t('Reverse applies to video and audio clips'), true);
+    edit(ops).then(function(){
+      toast(ops.length > 1 ? ops.length + t(' clip(s) reversed') : t('Playback direction flipped'));
+    }).catch(function(){});
   }
 
   function freezeAtPlayhead(clip){
@@ -3795,23 +3875,102 @@ body.fullscreen-stage .inspector{display:none}
       .catch(function(error){ toast(error.message || 'Title rejected', true); });
   }
 
-  // ---------- lane volume / pan ----------
+  // ---------- audio mixer (per-lane volume / pan / mute / solo) ----------
 
-  function setLaneLevel(lane, kind){
-    var current = kind === 'volume' ? (lane.volume !== undefined ? lane.volume : 1) : (lane.pan !== undefined ? lane.pan : 0);
-    var hint = kind === 'volume' ? 'Lane volume 0 - 2 (1 = 100%)' : 'Lane pan -1 (left) to 1 (right)';
-    var value = window.prompt(hint, String(current));
-    if (value === null) return;
-    var parsed = parseFloat(value);
-    if (!isFinite(parsed)) return toast('Not a number', true);
-    if (kind === 'volume' && (parsed < 0 || parsed > 2)) return toast('Volume must be between 0 and 2', true);
-    if (kind === 'pan' && (parsed < -1 || parsed > 1)) return toast('Pan must be between -1 and 1', true);
-    var props = {};
-    props[kind] = parsed;
-    edit([{ op:'track.set', trackId:lane.id, props:props }]).then(function(){
-      toast((lane.name || lane.id) + ' ' + kind + ' = ' + parsed);
-    }).catch(function(){});
+  function panLabel(value){
+    var n = Number(value) || 0;
+    if (Math.abs(n) < 0.025) return 'C';
+    return (n < 0 ? 'L' : 'R') + Math.round(Math.abs(n) * 100);
   }
+
+  function openMixer(focusLaneId){
+    if (!state.model) return;
+    var rows = el('mixer-rows');
+    rows.innerHTML = '';
+    var lanes = state.model.lanes.slice().sort(function(a,b){ return a.order - b.order; });
+    lanes.forEach(function(lane){
+      var row = document.createElement('div');
+      row.className = 'mixer-row' + (lane.type === 'audio' ? ' mixer-master' : '');
+      if (lane.id === focusLaneId) row.style.borderColor = 'var(--accent)';
+      var head = document.createElement('div');
+      head.innerHTML = '<b>' + escapeHtml(lane.name || lane.id) + '</b><small>' + escapeHtml(lane.type) + ' · ' + lane.clips.length + '</small>';
+      row.appendChild(head);
+      var mBtn = document.createElement('button');
+      mBtn.textContent = 'M';
+      mBtn.title = 'Mute lane';
+      mBtn.className = lane.muted ? 'on' : '';
+      mBtn.onclick = function(){
+        edit([{ op:'track.set', trackId:lane.id, props:{ muted:!lane.muted } }]).then(function(){ renderMixerRows(focusLaneId); }).catch(function(){});
+      };
+      row.appendChild(mBtn);
+      if (lane.type === 'audio'){
+        var sBtn = document.createElement('button');
+        sBtn.textContent = 'S';
+        sBtn.title = 'Solo lane';
+        sBtn.className = lane.solo ? 'on' : '';
+        sBtn.onclick = function(){
+          edit([{ op:'track.set', trackId:lane.id, props:{ solo:!lane.solo } }]).then(function(){ renderMixerRows(focusLaneId); }).catch(function(){});
+        };
+        row.appendChild(sBtn);
+      } else {
+        var gap = document.createElement('span');
+        row.appendChild(gap);
+      }
+      if (lane.type === 'audio'){
+        var volume = lane.volume !== undefined ? lane.volume : 1;
+        var volWrap = document.createElement('div');
+        volWrap.className = 'lvl';
+        volWrap.innerHTML = '<span>Vol</span>';
+        var volInput = document.createElement('input');
+        volInput.type = 'range';
+        volInput.min = '0'; volInput.max = '2'; volInput.step = '0.01';
+        volInput.value = String(volume);
+        var volOut = document.createElement('output');
+        volOut.textContent = Math.round(volume * 100) + '%';
+        volInput.addEventListener('input', function(){ volOut.textContent = Math.round(Number(volInput.value) * 100) + '%'; });
+        volInput.addEventListener('change', function(){
+          edit([{ op:'track.set', trackId:lane.id, props:{ volume:Number(volInput.value) } }])
+            .then(function(){ toast((lane.name || lane.id) + ' volume ' + Math.round(Number(volInput.value) * 100) + '%'); })
+            .catch(function(){});
+        });
+        volWrap.appendChild(volInput); volWrap.appendChild(volOut);
+        row.appendChild(volWrap);
+        var pan = lane.pan !== undefined ? lane.pan : 0;
+        var panWrap = document.createElement('div');
+        panWrap.className = 'lvl';
+        panWrap.innerHTML = '<span>Pan</span>';
+        var panInput = document.createElement('input');
+        panInput.type = 'range';
+        panInput.min = '-1'; panInput.max = '1'; panInput.step = '0.05';
+        panInput.value = String(pan);
+        var panOut = document.createElement('output');
+        panOut.textContent = panLabel(pan);
+        panInput.addEventListener('input', function(){ panOut.textContent = panLabel(Number(panInput.value)); });
+        panInput.addEventListener('change', function(){
+          edit([{ op:'track.set', trackId:lane.id, props:{ pan:Number(panInput.value) } }])
+            .then(function(){ toast((lane.name || lane.id) + ' pan ' + panLabel(Number(panInput.value))); })
+            .catch(function(){});
+        });
+        panWrap.appendChild(panInput); panWrap.appendChild(panOut);
+        row.appendChild(panWrap);
+      } else {
+        var note = document.createElement('div');
+        note.className = 'hint';
+        note.style.gridColumn = '3 / -1';
+        note.textContent = lane.muted ? t('Muted — hidden from preview and export') : t('Mute/hide apply to visual lanes; volume lives on clips');
+        row.appendChild(note);
+      }
+      rows.appendChild(row);
+    });
+    el('mixer-modal').classList.add('open');
+  }
+
+  function renderMixerRows(focusLaneId){
+    if (!el('mixer-modal').classList.contains('open')) return;
+    openMixer(focusLaneId);
+  }
+
+  function closeMixer(){ el('mixer-modal').classList.remove('open'); }
 
   // ---------- align selection to playhead ----------
 
@@ -3860,9 +4019,11 @@ body.fullscreen-stage .inspector{display:none}
 
   var SHORTCUTS = [
     ['Space', 'Play / pause'],
+    ['Shift+Space', 'Play from the In point'],
     ['← / →', 'Previous / next frame'],
-    ['Shift+← / → · PgUp / PgDn · J / L', 'Jump 1 second'],
-    ['K', 'Pause'],
+    ['Shift+← / → · PgUp / PgDn', 'Jump 1 second'],
+    ['J / L', 'Shuttle reverse / forward — repeat to go faster (up to 8×)'],
+    ['K', 'Stop shuttle / pause'],
     ['Home / End', 'Jump to start / end'],
     ['I / O', 'Set In / Out point'],
     ['M', 'Drop a marker'],
@@ -4010,12 +4171,15 @@ body.fullscreen-stage .inspector{display:none}
   }
 
   function loopPlaybackGuard(){
-    // Loop the In/Out range while playing (review mode).
-    if (!state.playing || state.inPoint === null || state.outPoint === null) return;
-    if (state.outPoint <= state.inPoint) return;
-    if (state.time >= state.outPoint - 0.02){
-      seek(state.inPoint, false);
+    // Loop the In/Out range, or the whole timeline when Loop is on with no
+    // range set (review mode).
+    if (!state.playing || !state.loop) return;
+    var hasRange = state.inPoint !== null && state.outPoint !== null && state.outPoint > state.inPoint;
+    if (hasRange){
+      if (state.time >= state.outPoint - 0.02) seek(state.inPoint, false);
+      return;
     }
+    if (state.time >= state.model.duration - 0.04) seek(0, false);
   }
 
   function zoomToSelection(){
@@ -4351,14 +4515,53 @@ body.fullscreen-stage .inspector{display:none}
     if (!state.frameReady) return;
     var win = stage.contentWindow;
     if (!win || !win.__vhtml) return;
+    stopShuttle();
     if (state.playing){ win.__vhtml.pause(); state.playing = false; el('play').textContent = '▶ Play'; setTimeout(function(){ updateSelectionBox(); updateElementBox(); }, 30); }
     else { state.playing = true; selectionBox.style.display = 'none'; elementBox.style.display = 'none'; elementHover.style.display = 'none'; el('play').textContent = '❚❚ Pause'; win.__vhtml.play(); }
   }
   function pausePlayback(){
+    stopShuttle();
     state.playing = false;
     el('play').textContent = '▶ Play';
     try { stage.contentWindow.__vhtml.pause(); } catch (error) {}
     setTimeout(function(){ updateSelectionBox(); updateElementBox(); }, 40);
+  }
+
+  // ---------- J/K/L shuttle (studio-driven fast preview) ----------
+
+  // The runtime's play() is 1× only, so shuttle rates render through
+  // deterministic seek steps — exact frames, no audio drift, the same way
+  // proxy scrubbing works. J doubles reverse speed, L doubles forward, K/Space
+  // return to normal playback.
+  function updateShuttleBadge(){
+    var badge = el('shuttle-badge');
+    if (!state.shuttle){ badge.style.display = 'none'; return; }
+    badge.textContent = (state.shuttle < 0 ? '◀◀ ' : '▶▶ ') + Math.abs(state.shuttle) + '× shuttle';
+    badge.style.display = 'inline-block';
+  }
+  function stopShuttle(){
+    if (state.shuttleTimer){ clearInterval(state.shuttleTimer); state.shuttleTimer = null; }
+    if (state.shuttle){ state.shuttle = 0; updateShuttleBadge(); }
+  }
+  function nudgeShuttle(direction){
+    if (!state.frameReady || !state.model) return;
+    if (state.playing) { try { stage.contentWindow.__vhtml.pause(); } catch (error) {} state.playing = false; el('play').textContent = '▶ Play'; }
+    var next = direction > 0
+      ? (state.shuttle > 0 ? Math.min(8, state.shuttle * 2) : 1)
+      : (state.shuttle < 0 ? Math.max(-8, state.shuttle * 2) : -1);
+    state.shuttle = next;
+    updateShuttleBadge();
+    if (state.shuttleTimer) clearInterval(state.shuttleTimer);
+    state.shuttleTimer = setInterval(function(){
+      if (!state.model) return stopShuttle();
+      var nextTime = state.time + 0.16 * state.shuttle;
+      if (nextTime <= 0 || nextTime >= state.model.duration){
+        seek(Math.max(0, Math.min(state.model.duration, nextTime)), true);
+        stopShuttle();
+        return;
+      }
+      seek(nextTime, true);
+    }, 160);
   }
   function step(direction){
     pausePlayback();
@@ -5045,14 +5248,30 @@ body.fullscreen-stage .inspector{display:none}
       } else if (drag.type === 'trim-left'){
         var target = magnetTime(drag.originalStart + delta, drag.clip.id, event.shiftKey);
         var newStart2 = Math.max(0, Math.min(drag.originalStart + drag.originalDuration - 0.001, target));
+        // Warn when the trim would pull media from before the source start
+        // (the server rejects it — surface the reason at the cursor instead).
+        var speedL = drag.clip.speed || 1;
+        var newIn = (drag.clip.sourceIn || 0) + (newStart2 - drag.originalStart) * speedL;
+        drag.sourceLimited = newIn < -0.001;
         drag.node.style.left = (newStart2 * rate) + 'px';
         drag.node.style.width = Math.max(4, (drag.originalStart + drag.originalDuration - newStart2) * rate) + 'px';
         drag.previewStart = newStart2;
+        if (drag.sourceLimited) showDragTip('⚠ ' + t('No media before the source start'), event.clientX, event.clientY);
       } else if (drag.type === 'trim-right'){
         var end = magnetTime(drag.originalStart + drag.originalDuration + delta, drag.clip.id, event.shiftKey);
+        var speedR = drag.clip.speed || 1;
+        var sourceMax = assetSourceDuration(drag.clip);
+        // Clamp the preview at the end of the source media (CapCut's
+        // "insufficient footage" boundary) and say so at the cursor.
+        if (sourceMax !== null && !drag.clip.freeze && !drag.clip.hasTimeRemap){
+          var maxEnd = drag.originalStart + (sourceMax - (drag.clip.sourceIn || 0)) / speedR;
+          if (end > maxEnd){ end = maxEnd; drag.sourceLimited = true; }
+          else drag.sourceLimited = false;
+        } else drag.sourceLimited = false;
         var newDuration = Math.max(0.001, end - drag.originalStart);
         drag.node.style.width = Math.max(4, newDuration * rate) + 'px';
         drag.previewDuration = newDuration;
+        if (drag.sourceLimited) showDragTip('⚠ ' + t('End of source media'), event.clientX, event.clientY);
       }
     });
     scroll.addEventListener('pointerdown', function(event){
@@ -5359,7 +5578,7 @@ body.fullscreen-stage .inspector{display:none}
   function setupKeys(){
     document.addEventListener('keydown', function(event){
       var tag = (event.target.tagName || '').toLowerCase();
-      var modalOpen = el('export-modal').classList.contains('open') || el('transition-modal').classList.contains('open') || el('settings-modal').classList.contains('open') || el('help-modal').classList.contains('open');
+      var modalOpen = el('export-modal').classList.contains('open') || el('transition-modal').classList.contains('open') || el('settings-modal').classList.contains('open') || el('help-modal').classList.contains('open') || el('mixer-modal').classList.contains('open');
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || event.target.isContentEditable) return;
       if (event.key === '?' || (event.shiftKey && (event.key === '/' || event.code === 'Slash'))){ event.preventDefault(); toggleHelp(); return; }
       if (event.key === 'Escape'){
@@ -5368,6 +5587,7 @@ body.fullscreen-stage .inspector{display:none}
         if (el('settings-modal').classList.contains('open')){ el('settings-modal').classList.remove('open'); return; }
         if (el('export-modal').classList.contains('open')){ closeExport(); return; }
         if (el('transition-modal').classList.contains('open')){ el('transition-modal').classList.remove('open'); state.trDraft = null; return; }
+        if (el('mixer-modal').classList.contains('open')){ closeMixer(); return; }
         if (state.wysiwyg){
           state.wysiwyg.layer.style.transform = transformString(state.wysiwyg.original);
           state.wysiwyg = null;
@@ -5421,7 +5641,11 @@ body.fullscreen-stage .inspector{display:none}
       if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || event.key === 'Y')){ event.preventDefault(); redo(); return; }
       if (event.ctrlKey || event.metaKey) return;
       if (event.key === 'e' || event.key === 'E'){ setPickMode(!state.pickElement); return; }
-      if (event.code === 'Space'){ event.preventDefault(); playPause(); }
+      if (event.code === 'Space'){
+        event.preventDefault();
+        if (event.shiftKey && state.inPoint !== null){ seek(state.inPoint, true); if (!state.playing) playPause(); }
+        else playPause();
+      }
       else if (event.key === 'i' || event.key === 'I'){ setInPoint(); }
       else if (event.key === 'o' || event.key === 'O'){ setOutPoint(); }
       else if (event.key === 'm' || event.key === 'M'){ addMarker(); }
@@ -5432,9 +5656,9 @@ body.fullscreen-stage .inspector{display:none}
       else if (event.key === 's' || event.key === 'S'){ splitSelected(); }
       else if (event.key === 't' || event.key === 'T'){ addTransition(); }
       else if (event.key === 'c' || event.key === 'C'){ addCaptionAtPlayhead(); }
-      else if (event.key === 'j' || event.key === 'J'){ pausePlayback(); seek(Math.max(0, state.time - 1), true); }
+      else if (event.key === 'j' || event.key === 'J'){ event.preventDefault(); nudgeShuttle(-1); }
       else if (event.key === 'k' || event.key === 'K'){ pausePlayback(); }
-      else if (event.key === 'l' || event.key === 'L'){ pausePlayback(); seek(Math.min(state.model.duration, state.time + 1), true); }
+      else if (event.key === 'l' || event.key === 'L'){ event.preventDefault(); nudgeShuttle(1); }
       else if (event.key === 'Home'){ event.preventDefault(); seek(0, true); }
       else if (event.key === 'End'){ event.preventDefault(); seek(state.model.duration, true); }
       else if (event.key === 'PageUp'){ event.preventDefault(); seek(Math.max(0, state.time - 1), true); }
@@ -5596,6 +5820,18 @@ body.fullscreen-stage .inspector{display:none}
       state.snapping = !state.snapping;
       el('snap').classList.toggle('active', state.snapping);
       toast('Snapping ' + (state.snapping ? 'on' : 'off'));
+    };
+    el('mixer').onclick = function(){ openMixer(); };
+    el('mixer-close').onclick = closeMixer;
+    el('mixer-done').onclick = closeMixer;
+    el('loop').onclick = function(){
+      state.loop = !state.loop;
+      document.body.classList.toggle('looping', state.loop);
+      el('loop').classList.toggle('active', state.loop);
+      var hasRange = state.inPoint !== null && state.outPoint !== null && state.outPoint > state.inPoint;
+      toast(state.loop
+        ? (hasRange ? 'Looping the In→Out range' : 'Looping the whole timeline')
+        : 'Loop off');
     };
     el('element-mode').onclick = function(){ setPickMode(!state.pickElement); };
     el('fit').onclick = fitTimeline;

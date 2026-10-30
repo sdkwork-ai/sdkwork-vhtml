@@ -154,7 +154,7 @@ export type EditOperation =
   | { op: 'clip.slip'; clipId: string; delta: TimeLike }
   | { op: 'clip.slide'; clipId: string; delta: TimeLike }
   | { op: 'clip.roll'; clipId: string; edge: 'start' | 'end'; delta: TimeLike }
-  | { op: 'clip.speed'; clipId: string; speed: number | string }
+  | { op: 'clip.speed'; clipId: string; speed: number | string; reverse?: boolean }
   | { op: 'clip.freeze'; clipId: string; sourceTime?: TimeLike; at?: TimeLike }
   | {
       op: 'clip.timeremap';
@@ -2226,6 +2226,7 @@ class Editor {
       return;
     }
     clip.speed = speed;
+    if (operation.reverse !== undefined) clip.reverse = operation.reverse;
     clip.duration = newDuration;
     if (isTimeBearing(clip)) {
       clip.sourceOut = add(clip.sourceIn, sourceSpan);

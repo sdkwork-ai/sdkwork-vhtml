@@ -78,6 +78,35 @@ test('speed retimes duration while preserving the source span', () => {
   assert.equal(toNumber(clip.sourceOut!) - toNumber(clip.sourceIn), 4);
 });
 
+test('clip.speed toggles reverse playback without touching the source window', () => {
+  const project = load();
+  const result = applyEditOperations(project, [
+    { op: 'clip.speed', clipId: 'm1', speed: 1, reverse: true },
+  ]);
+  assert.equal(result.ok, true);
+  const clip = findClip(result.project, 'm1')!.clip;
+  assert.equal(clip.reverse, true);
+  // Reverse keeps the timing contract: duration, source window and speed unchanged.
+  assert.equal(toNumber(clip.duration), 4);
+  assert.equal(toNumber(clip.speed), 1);
+  assert.equal(toNumber(clip.sourceIn), 1);
+  assert.equal(toNumber(clip.sourceOut!), 5);
+  const off = applyEditOperations(result.project, [{ op: 'clip.speed', clipId: 'm1', speed: 1, reverse: false }]);
+  assert.equal(off.ok, true);
+  assert.equal(findClip(off.project, 'm1')!.clip.reverse, false);
+  // Omitting the flag leaves an already-reversed clip reversed.
+  const keep = applyEditOperations(project, [
+    { op: 'clip.speed', clipId: 'm1', speed: 1, reverse: true },
+    { op: 'clip.speed', clipId: 'm1', speed: 2 },
+  ]);
+  assert.equal(keep.ok, true);
+  const kept = findClip(keep.project, 'm1')!.clip;
+  assert.equal(kept.reverse, true);
+  assert.equal(toNumber(kept.duration), 2);
+  const validation = validateDocument({ specVersion: '1.1', project: keep.project }, { root: 'D:/tmp', checkFiles: false });
+  assert.equal(validation.errors.length, 0);
+});
+
 test('roll moves an adjacent cut', () => {
   const project = load();
   const result = applyEditOperations(project, [{ op: 'clip.roll', clipId: 'a', edge: 'end', delta: '0.5s' }]);

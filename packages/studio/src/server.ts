@@ -183,6 +183,7 @@ interface StudioClip {
   enabled: boolean;
   muted?: boolean;
   sourceIn: number;
+  reverse: boolean;
   freeze?: number;
   hasTimeRemap: boolean;
   timeRemap?: { at: number; source: number; easing?: string }[];
@@ -384,6 +385,7 @@ function studioModel(project: Project): StudioModel {
           enabled: clip.enabled,
           muted: clip.kind === 'video' || clip.kind === 'audio' ? clip.muted : undefined,
           sourceIn: toNumber(clip.sourceIn),
+          reverse: clip.reverse === true,
           freeze: clip.freeze !== undefined ? toNumber(clip.freeze) : undefined,
           hasTimeRemap: clip.timeRemap !== undefined,
           timeRemap: clip.timeRemap
