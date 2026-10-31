@@ -2062,9 +2062,20 @@ class VhtmlParser {
     };
     transform.x = readLength('x', 'x', 0);
     transform.y = readLength('y', 'y', 0);
+    // Uniform `scale` is a magnitude (positive, 0.001..1000). `scale-x`/
+    // `scale-y` accept a sign so clips can mirror (flip) — same magnitude
+    // bounds, negative means mirrored. Zero collapses the layer and stays
+    // rejected, mirroring the old positive-only range.
+    const magnitude = (el: PElement, name: string, raw: number | undefined, fallback: number): number => {
+      if (raw !== undefined && this.attr(el, name) !== undefined && raw === 0) {
+        this.error(ErrorCode.PARSE_INVALID_ATTRIBUTE, `attribute "${name}" must be a nonzero number in [-1000, 1000]`, el);
+        return fallback;
+      }
+      return raw ?? fallback;
+    };
     const scale = this.numberAttr(el, 'scale', transformEl ? this.numberAttr(transformEl, 'scale', 1, 0.001, 1000) ?? 1 : 1, 0.001, 1000) ?? 1;
-    transform.scaleX = this.numberAttr(el, 'scale-x', transformEl ? this.numberAttr(transformEl, 'scale-x', scale, 0.001, 1000) ?? scale : scale, 0.001, 1000) ?? scale;
-    transform.scaleY = this.numberAttr(el, 'scale-y', transformEl ? this.numberAttr(transformEl, 'scale-y', scale, 0.001, 1000) ?? scale : scale, 0.001, 1000) ?? scale;
+    transform.scaleX = this.numberAttr(el, 'scale-x', transformEl ? magnitude(transformEl, 'scale-x', this.numberAttr(transformEl, 'scale-x', scale, -1000, 1000), scale) : scale, -1000, 1000) ?? scale;
+    transform.scaleY = this.numberAttr(el, 'scale-y', transformEl ? magnitude(transformEl, 'scale-y', this.numberAttr(transformEl, 'scale-y', scale, -1000, 1000), scale) : scale, -1000, 1000) ?? scale;
     const rotateRaw = this.attr(el, 'rotate') ?? (transformEl ? this.attr(transformEl, 'rotate') : undefined);
     if (rotateRaw) transform.rotate = parseAngle(rotateRaw) ?? 0;
     const anchorX = this.attr(el, 'anchor-x') ?? (transformEl ? this.attr(transformEl, 'anchor-x') : undefined);

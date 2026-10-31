@@ -243,7 +243,7 @@ VHTML 1.1 不承诺：
 | `loop` | boolean | false | Scene Clip 循环场景局部时间 |
 | `class` | string | — | 加到生成 Clip 层的 CSS 类 |
 
-`transform` 子元素：`x/y`（px 或 %）、`scale`/`scale-x`/`scale-y`、
+`transform` 子元素：`x/y`（px 或 %）、`scale`/`scale-x`/`scale-y`（统一 `scale` 为正数量级；`scale-x`/`scale-y` 接受负值表示镜像翻转，数量级 0.001..1000）、
 `rotate`（deg/rad/turn）、`anchor-x`/`anchor-y`（0..1 或 %）、`perspective`。
 
 `crop` 子元素：`left/right/top/bottom`，占画面比例，合计 <1。

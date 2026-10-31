@@ -58,6 +58,7 @@ interface StudioModelShape extends StudioModelExtras {
   lanes: Array<{ id: string; type: string; enabled: boolean; muted: boolean; locked: boolean; clips: Array<{ id: string; kind: string; start: number; duration: number; speed: number; fadeIn?: number; fadeOut?: number; crop?: Record<string, number>; audioEffects?: Array<{ id: string; type: string; params: Record<string, string | number | boolean> }>; animations: Array<{ id: string; property: string; keyframes: Array<{ time: number; value: number }> }> }> }>;
   markers: Array<{ id: string; time: number; name?: string }>;
   timelineId: string;
+  mainTimelineId: string;
 }
 
 interface StudioModelExtras {
@@ -422,6 +423,82 @@ test('Studio clip-from-asset honors insert and overwrite placement modes', { tim
     assert.ok(lane);
     assert.equal(lane.clips[0]?.start, 0);
     assert.ok(lane.clips[0]!.duration >= 0.99);
+  } finally {
+    child.kill();
+  }
+});
+
+
+test('Studio editing view enters compound clips and guards undo across timelines', { timeout: 60_000 }, async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'vhtml-enter-studio-'));
+  fs.writeFileSync(path.join(root, 'editing.vhtml'), projectSource());
+  fs.writeFileSync(path.join(root, 'vhtml.json'), JSON.stringify({
+    version: '1.1',
+    id: 'editing-studio',
+    entry: 'editing.vhtml',
+    paths: { assets: 'assets', images: 'assets/images', video: 'assets/video', audio: 'assets/audio', fonts: 'assets/fonts', scenes: 'scenes', generated: 'generated', renders: 'renders', cache: '.vhtml/cache' },
+  }, null, 2));
+  const port = 4600 + Math.floor(Math.random() * 300);
+  const repo = path.resolve(import.meta.dirname, '..', '..');
+  const child = spawn(process.execPath, [path.join(repo, 'bin', 'vhtml.mjs'), 'serve', root, '--port', String(port), '--no-open'], {
+    cwd: repo,
+    stdio: 'ignore',
+  });
+  const url = `http://127.0.0.1:${port}`;
+  const select = async (timelineId: string | null): Promise<{ status: number; body: { ok?: boolean; model?: StudioModelShape; message?: string } }> => {
+    const response = await fetch(`${url}/api/timeline/select`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ timelineId }),
+    });
+    return { status: response.status, body: (await response.json()) as { ok?: boolean; model?: StudioModelShape; message?: string } };
+  };
+  try {
+    await waitForProject(url);
+
+    // Nest the only clip into a compound; the main lane now holds one
+    // timeline clip and the nested timeline holds the source clip.
+    const nest = await edit(url, [{ op: 'timeline.nest', clipIds: ['c'], timelineId: 'sub', clipId: 'compound-1' }]);
+    assert.equal(nest.status, 200);
+    assert.equal(nest.body.model?.timelineId, 'main');
+    assert.equal(nest.body.model?.mainTimelineId, 'main');
+
+    // Unknown timelines are rejected without disturbing the editing view.
+    const missing = await select('nope');
+    assert.equal(missing.status, 404);
+    const afterMissing = await (await fetch(`${url}/api/project`)).json() as { model: StudioModelShape };
+    assert.equal(afterMissing.model.timelineId, 'main');
+
+    // Entering the compound switches the projected lanes to the nested tracks.
+    const enter = await select('sub');
+    assert.equal(enter.status, 200);
+    assert.equal(enter.body.model?.timelineId, 'sub');
+    assert.equal(enter.body.model?.mainTimelineId, 'main');
+    const nestedLane = enter.body.model?.lanes.find((lane) => lane.id === 'v-sub');
+    assert.ok(nestedLane, 'nested lane projected');
+    assert.ok(nestedLane!.clips.some((clip) => clip.id === 'c'));
+
+    // Edits while inside target the nested clip by id and persist.
+    const inside = await edit(url, [{ op: 'clip.set', clipId: 'c', props: { opacity: 0.4 } }]);
+    assert.equal(inside.status, 200);
+    assert.equal(inside.body.model?.timelineId, 'sub');
+
+    // Undo of the opacity edit keeps the nested editing view (the timeline
+    // still exists at this history point).
+    const undoOpacity = await fetch(`${url}/api/undo`, { method: 'POST' });
+    const undoOpacityBody = (await undoOpacity.json()) as { ok?: boolean; model?: StudioModelShape };
+    assert.ok(undoOpacityBody.ok);
+    assert.equal(undoOpacityBody.model?.timelineId, 'sub');
+
+    // Undo of the nest op while inside the nested view snaps the editing
+    // view back to main instead of projecting a missing timeline.
+    const undoNest = await fetch(`${url}/api/undo`, { method: 'POST' });
+    const undoNestBody = (await undoNest.json()) as { ok?: boolean; model?: StudioModelShape };
+    assert.ok(undoNestBody.ok);
+    assert.equal(undoNestBody.model?.timelineId, 'main');
+
+    // Back to a clean state for autosave.
+    await select('main');
   } finally {
     child.kill();
   }

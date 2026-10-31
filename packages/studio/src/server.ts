@@ -257,6 +257,7 @@ interface StudioModel {
   lanes: StudioLane[];
   markers: StudioMarker[];
   timelineId: string;
+  mainTimelineId: string;
   outputs: Array<{ id: string; format: string; width: number; height: number }>;
 }
 
@@ -347,8 +348,8 @@ function studioAnimations(clip: Clip): StudioAnimation[] {
   }));
 }
 
-function studioModel(project: Project): StudioModel {
-  const timeline = findTimeline(project, project.mainTimeline) ?? project.timelines[0];
+function studioModel(project: Project, editingTimelineId?: string): StudioModel {
+  const timeline = findTimeline(project, editingTimelineId ?? project.mainTimeline) ?? findTimeline(project, project.mainTimeline) ?? project.timelines[0];
   const lanes: StudioLane[] = (timeline?.tracks ?? [])
     .slice()
     .sort((a, b) => a.order - b.order)
@@ -474,6 +475,7 @@ function studioModel(project: Project): StudioModel {
       color: marker.color,
     })),
     timelineId: timeline?.id ?? project.mainTimeline,
+    mainTimelineId: project.mainTimeline,
     outputs: project.outputs.map((output) => ({
       id: output.id,
       format: output.format,
@@ -748,11 +750,19 @@ export async function startStudio(input: string | undefined, options: StudioOpti
   let latestDiagnostics = validation.diagnostics;
   const jobs = new Map<string, Job>();
   const mediaCacheDir = path.join(root, layout.cache, 'studio-media');
+  // Editing view: the timeline the Studio is currently showing (CapCut-style
+  // "enter compound clip"). Document identity and export stay on mainTimeline.
+  let editingTimelineId = session.project.mainTimeline;
+  const editingTimeline = (): Timeline => findTimeline(session.project, editingTimelineId) ?? findTimeline(session.project, session.project.mainTimeline) ?? session.project.timelines[0]!;
+  /** Fall back to main when the editing timeline no longer exists (undo of a nest, reload). */
+  const normalizeEditingTimeline = (): void => {
+    if (!findTimeline(session.project, editingTimelineId)) editingTimelineId = session.project.mainTimeline;
+  };
 
   const rebuildStage = (): void => {
     stageHtml = buildStageHtml({
       project: session.project,
-      timelineId: session.project.mainTimeline,
+      timelineId: editingTimeline().id,
       mode: 'preview',
       runtimeSource,
       proxySources,
@@ -779,7 +789,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
   };
 
   const responseForProject = (extra: Record<string, unknown> = {}) => ({
-    model: studioModel(session.project),
+    model: studioModel(session.project, editingTimeline().id),
     /** Raw Core Model snapshot for embed hosts (studioModel is the projection). */
     project: structuredClone(session.project),
     revision,
@@ -809,6 +819,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
     }
     dirty = true;
     save();
+    normalizeEditingTimeline();
     rebuildStage();
     revision += 1;
     return { status: 200, body: responseForProject({ ok: true, changed: result.changed }) };
@@ -830,6 +841,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
       hydrateCachedAssets(nextParsed.document.project, root, cacheFilePath(root, layout));
       documentSource = { path: entry, root, raw: nextSource };
       session = new EditSession(nextParsed.document.project);
+      editingTimelineId = session.project.mainTimeline;
       latestDiagnostics = validateDocument(nextParsed.document, { root, checkFiles: true }).diagnostics;
       rebuildStage();
       revision += 1;
@@ -1219,6 +1231,22 @@ export async function startStudio(input: string | undefined, options: StudioOpti
           sendJson(response, outcome.status, outcome.body);
           return true;
         }
+        if (request.method === 'POST' && url.pathname === '/api/timeline/select') {
+          // CapCut-style "enter compound clip": switch the editing view (and
+          // the WYSIWYG stage) to another timeline in this project. Document
+          // identity, autosave and export keep targeting mainTimeline.
+          const body = JSON.parse((await readBody(request)) || '{}') as { timelineId?: string | null };
+          const requested = typeof body.timelineId === 'string' ? body.timelineId : session.project.mainTimeline;
+          const target = findTimeline(session.project, requested);
+          if (!target) {
+            sendJson(response, 404, { ok: false, message: `timeline "${requested}" does not exist` });
+            return true;
+          }
+          editingTimelineId = target.id;
+          rebuildStage();
+          sendJson(response, 200, { ok: true, ...responseForProject() });
+          return true;
+        }
         if (request.method === 'POST' && url.pathname === '/api/undo') {
           if (!session.canUndo) {
             sendJson(response, 200, { ok: false, message: 'nothing to undo', ...responseForProject() });
@@ -1226,6 +1254,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
           }
           session.undo();
           save();
+          normalizeEditingTimeline();
           rebuildStage();
           revision += 1;
           latestDiagnostics = validateDocument({ specVersion: '1.1', project: session.project }, { root, checkFiles: false }).diagnostics;
@@ -1239,6 +1268,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
           }
           session.redo();
           save();
+          normalizeEditingTimeline();
           rebuildStage();
           revision += 1;
           latestDiagnostics = validateDocument({ specVersion: '1.1', project: session.project }, { root, checkFiles: false }).diagnostics;

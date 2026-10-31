@@ -330,6 +330,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   <div id="status">connecting</div>
   <div class="actions">
     <span id="saved-badge"></span>
+    <button id="timeline-back" style="display:none" data-i18n="↩ 主时间线" data-i18n-title="Leave the compound clip — back to the main timeline">↩ 主时间线</button>
     <button id="reload" data-i18n="⟳ Reload" data-i18n-title="Reload from disk (external HTML/assets)">⟳ Reload</button>
     <button id="undo" data-i18n="↶ Undo" data-i18n-title="Undo (Ctrl+Z)">↶ Undo</button>
     <button id="redo" data-i18n="↷ Redo" data-i18n-title="Redo (Ctrl+Shift+Z)">↷ Redo</button>
@@ -541,7 +542,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 <script>
 (function(){
   'use strict';
-  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
+  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, timelineStack:[], attributeClipboard:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
   var el = function(id){ return document.getElementById(id); };
   var stage = el('stage');
   var tracksEl = el('tracks');
@@ -631,6 +632,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       el('title').textContent = body.model.title;
       updateStatus(body.diagnostics);
       updateHistory(body);
+      updateTimelineChrome();
       renderTimeline();
       renderInspector();
       loadStage();
@@ -1196,6 +1198,12 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         rampPresets.appendChild(button);
       });
       box.appendChild(rampPresets);
+      var curveTitle = document.createElement('div');
+      curveTitle.className = 'element-note';
+      curveTitle.style.marginTop = '4px';
+      curveTitle.textContent = t('Curve speed presets (曲线变速):');
+      box.appendChild(curveTitle);
+      renderSpeedCurvePresets(box, clip);
       if (clip.hasTimeRemap){
         var rampRow = document.createElement('div');
         rampRow.className = 'element-note';
@@ -1233,6 +1241,21 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       sc.appendChild(scRow);
       box.appendChild(sc);
       box.appendChild(field('Rotate (deg)', 'number', clip.transform.rotate, 0.5, function(value){ setTransform(clip, 'rotate', parseFloat(value)); }));
+      var quickRow = document.createElement('div');
+      quickRow.className = 'btn-row';
+      [
+        ['⇋ ' + t('Flip H'), function(){ flipSelected([clip.id], 'h'); }],
+        ['⇅ ' + t('Flip V'), function(){ flipSelected([clip.id], 'v'); }],
+        ['↻ 90°', function(){ rotateSelected([clip.id], 90); }],
+        ['↺ 90°', function(){ rotateSelected([clip.id], -90); }],
+      ].forEach(function(def){
+        var button = document.createElement('button');
+        button.textContent = def[0];
+        button.title = t('Quick transform (mirror / rotate)');
+        button.onclick = def[1];
+        quickRow.appendChild(button);
+      });
+      box.appendChild(quickRow);
       box.appendChild(field(t('Z index'), 'number', clip.z, 1, function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ z:parseInt(value,10) || 0 } }]); }));
       box.appendChild(selectField('Fit', clip.fit, ['cover','contain','fill','none','scale-down'], function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ fit:value } }]); }));
       box.appendChild(selectField('Blend', clip.blend, ['normal','multiply','screen','overlay','darken','lighten','color-dodge','color-burn','soft-light','hard-light','difference','exclusion','hue','saturation','color','luminosity'], function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ blend:value } }]); }));
@@ -2048,6 +2071,161 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     if (!ops.length) return;
     edit(ops).then(function(){
       toast(t('Layout applied: ') + t(preset === 'full' ? 'Full frame (reset)' : preset === 'pip' ? 'Picture-in-picture · bottom-right' : preset === 'split-lr' ? 'Split left/right' : preset === 'split-tb' ? 'Split top/bottom' : preset === 'thirds' ? 'Three panels' : 'Grid 2×2'));
+    }).catch(function(){});
+  }
+
+  // ---------- compound clip editing (CapCut-style enter/navigate) ----------
+
+  function compoundRefOf(clip){
+    if (!clip || clip.kind !== 'timeline' || !clip.ref) return null;
+    return clip.ref.replace(/^timeline:/, '');
+  }
+  function selectEditingTimeline(timelineId, pushCurrent){
+    var target = timelineId || state.model.mainTimelineId;
+    if (!target || target === state.model.timelineId) return Promise.resolve();
+    if (pushCurrent) state.timelineStack.push(state.model.timelineId);
+    else state.timelineStack = state.timelineStack.filter(function(id){ return id !== target; });
+    return api('/api/timeline/select', {
+      method:'POST', headers:{ 'content-type':'application/json' },
+      body: JSON.stringify({ timelineId: target }),
+    }).then(function(body){
+      applyProjectResponse(body);
+      selectOnly(null);
+      seek(0, true);
+      renderTimeline();
+      updateTimelineChrome();
+      toast(t('Editing timeline: ') + (body.model.timelineId === body.model.mainTimelineId ? t('Main timeline') : body.model.timelineId));
+    }).catch(function(error){ toast(error.message || 'Timeline switch failed', true); });
+  }
+  function enterCompoundClip(clip){
+    var ref = compoundRefOf(clip);
+    if (!ref) return;
+    selectEditingTimeline(ref, true);
+  }
+  function updateTimelineChrome(){
+    var onMain = !state.model || !state.model.mainTimelineId || state.model.timelineId === state.model.mainTimelineId;
+    var button = el('timeline-back');
+    button.style.display = onMain ? 'none' : '';
+    var title = el('title');
+    if (!onMain) title.setAttribute('data-timeline-badge', state.model.timelineId);
+    else title.removeAttribute('data-timeline-badge');
+  }
+
+  // ---------- copy/paste attributes (CapCut 粘贴属性) ----------
+
+  var ATTRIBUTE_FIELDS = ['transform', 'opacity', 'blend', 'fit', 'crop', 'effects', 'audioEffects', 'volume', 'pan', 'fadeIn', 'fadeOut'];
+  function copyAttributesOf(clip){
+    var snapshot = {};
+    ATTRIBUTE_FIELDS.forEach(function(fieldName){
+      if (clip[fieldName] === undefined || clip[fieldName] === null) return;
+      snapshot[fieldName] = JSON.parse(JSON.stringify(clip[fieldName]));
+    });
+    return snapshot;
+  }
+  function reIdEffects(list){
+    return (list || []).map(function(effect, index){
+      var copy = JSON.parse(JSON.stringify(effect));
+      copy.id = effect.type + '-pasted-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36) + '-' + index;
+      return copy;
+    });
+  }
+  function pasteAttributesTo(ids){
+    var snapshot = state.attributeClipboard;
+    if (!snapshot || !Object.keys(snapshot).length) return toast(t('Attribute clipboard is empty — copy attributes from a clip first'), true);
+    var targets = ids.map(function(id){ return clipById(id); }).filter(function(entry){
+      return entry && !entry.lane.locked;
+    });
+    if (!targets.length) return toast(t('Nothing to paste onto'), true);
+    var ops = targets.map(function(entry){
+      var props = {};
+      var clip = entry.clip;
+      ATTRIBUTE_FIELDS.forEach(function(fieldName){
+        if (snapshot[fieldName] === undefined) return;
+        var value = snapshot[fieldName];
+        if (fieldName === 'effects' || fieldName === 'audioEffects'){
+          // Only meaningful on compatible clips; visual/audio channels map by kind.
+          if (fieldName === 'effects' && !isVisualClip(clip)) return;
+          if (fieldName === 'audioEffects' && clip.kind !== 'video' && clip.kind !== 'audio') return;
+          value = reIdEffects(value);
+        }
+        props[fieldName] = value;
+      });
+      return { op:'clip.set', clipId:clip.id, props:props };
+    });
+    return edit(ops).then(function(){
+      toast(t('Attributes pasted to ') + targets.length + t(' clip(s)'));
+    }).catch(function(){});
+  }
+
+  // ---------- curve speed presets (CapCut 曲线变速) ----------
+
+  // Normalized source-time curves: [t 0..1 of clip, s 0..1 of source span].
+  // Rendered into a clip.timeremap keyframe list with ease-in-out between
+  // points, matching CapCut's 曲线变速 presets.
+  var SPEED_CURVE_PRESETS = [
+    { id:'montage', label:'Montage (蒙太奇)', curve:[[0,0],[0.18,0.08],[0.4,0.5],[0.62,0.58],[0.82,0.92],[1,1]] },
+    { id:'hero', label:'Hero moment (英雄时刻)', curve:[[0,0],[0.65,0.22],[0.85,0.7],[1,1]] },
+    { id:'bullet', label:'Bullet time (子弹时间)', curve:[[0,0],[0.3,0.42],[0.5,0.5],[0.7,0.58],[1,1]] },
+    { id:'jumpcut', label:'Jump cut (跳接)', curve:[[0,0],[0.2,0.34],[0.28,0.36],[0.48,0.68],[0.56,0.7],[1,1]] },
+    { id:'flashin', label:'Flash in (闪进)', curve:[[0,0],[0.55,0.2],[1,1]] },
+  ];
+  function applySpeedCurvePreset(clip, preset){
+    var sourceStart = clip.sourceIn || 0;
+    var sourceSpan = clip.duration * (clip.speed || 1);
+    var keyframes = preset.curve.map(function(point, index){
+      return {
+        at: Number((point[0] * clip.duration).toFixed(6)),
+        source: Number((sourceStart + point[1] * sourceSpan).toFixed(6)),
+        easing: index === 0 ? undefined : 'ease-in-out',
+      };
+    });
+    return edit([{ op:'clip.timeremap', clipId:clip.id, easing:'ease-in-out', keyframes:keyframes }])
+      .then(function(){ toast(t('Speed curve applied: ') + t(preset.label)); })
+      .catch(function(error){ toast(error.message || 'Speed curve rejected', true); });
+  }
+  function renderSpeedCurvePresets(box, clip){
+    var row = document.createElement('div');
+    row.className = 'btn-row';
+    SPEED_CURVE_PRESETS.forEach(function(preset){
+      var button = document.createElement('button');
+      button.textContent = t(preset.label);
+      button.title = t('Keyframed curve-speed preset (CapCut 曲线变速)');
+      button.onclick = function(){ applySpeedCurvePreset(clip, preset); };
+      row.appendChild(button);
+    });
+    box.appendChild(row);
+  }
+
+  // ---------- quick transform: flip & rotate ----------
+
+  function flipSelected(ids, axis){
+    var targets = ids.map(function(id){ return clipById(id); }).filter(function(entry){
+      return entry && isVisualClip(entry.clip) && !entry.lane.locked;
+    });
+    if (!targets.length) return toast(t('Flip needs a visual clip'), true);
+    var ops = targets.map(function(entry){
+      var transform = Object.assign({}, entry.clip.transform);
+      var key = axis === 'h' ? 'scaleX' : 'scaleY';
+      transform[key] = -(Number(transform[key]) || 1) || -1;
+      return { op:'clip.set', clipId:entry.clip.id, props:{ transform:transform } };
+    });
+    return edit(ops).then(function(){
+      toast(t(axis === 'h' ? 'Flipped horizontally' : 'Flipped vertically'));
+    }).catch(function(){});
+  }
+  function rotateSelected(ids, delta){
+    var targets = ids.map(function(id){ return clipById(id); }).filter(function(entry){
+      return entry && isVisualClip(entry.clip) && !entry.lane.locked;
+    });
+    if (!targets.length) return toast(t('Rotate needs a visual clip'), true);
+    var ops = targets.map(function(entry){
+      var transform = Object.assign({}, entry.clip.transform);
+      var next = ((Number(transform.rotate) || 0) + delta + 540) % 360 - 180;
+      transform.rotate = Math.round(next * 10) / 10;
+      return { op:'clip.set', clipId:entry.clip.id, props:{ transform:transform } };
+    });
+    return edit(ops).then(function(){
+      toast(t('Rotated ') + (delta > 0 ? '+90°' : '−90°'));
     }).catch(function(){});
   }
 
@@ -3699,6 +3877,12 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       ctxItem(menu, t('Copy'), 'Ctrl+C', function(){ copySelected(false); });
       ctxItem(menu, t('Cut'), 'Ctrl+X', function(){ copySelected(true); }, locked);
       ctxItem(menu, t('Paste at playhead'), 'Ctrl+V', function(){ pasteClipboard(); });
+      ctxSep(menu);
+      ctxItem(menu, t('Copy attributes'), '', function(){
+        state.attributeClipboard = copyAttributesOf(clip);
+        toast(t('Attributes copied — select clip(s) and paste'));
+      }, selected.length !== 1);
+      ctxItem(menu, t('Paste attributes'), '', function(){ pasteAttributesTo(selected); }, !state.attributeClipboard || locked);
       if (selected.length >= 2){
         ctxItem(menu, t('Link clips'), '', function(){
           edit([{ op:'clip.link', clipIds:selected }]).then(function(){ toast(t('Clips linked — they move together')); }).catch(function(){});
@@ -3722,6 +3906,13 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         if (clip.hasTimeRemap) ctxItem(menu, t('Clear speed ramp'), '', function(){ edit([{ op:'clip.timeremap.clear', clipId:clip.id }]).catch(function(){}); });
         ctxItem(menu, t('Freeze frame at playhead'), '', function(){ freezeAtPlayhead(clip); }, locked);
         ctxItem(menu, clip.reverse ? t('Restore forward playback') : t('Reverse clip (倒放)'), '', function(){ toggleClipReverse(selected); }, locked);
+      }
+      if (clip.kind === 'video' || clip.kind === 'scene'){
+        ctxSep(menu);
+        ctxTitle(menu, t('Speed curve (曲线变速)'));
+        SPEED_CURVE_PRESETS.forEach(function(preset){
+          ctxItem(menu, t(preset.label), '', function(){ applySpeedCurvePreset(clip, preset); }, locked || selected.length !== 1);
+        });
       }
       if (clip.kind === 'video' || clip.kind === 'audio'){
         ctxSep(menu);
@@ -3766,6 +3957,10 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       if (isVisualClip(clip)){
         ctxSep(menu);
         ctxTitle(menu, 'Layer');
+        ctxItem(menu, t('Flip horizontally'), '', function(){ flipSelected(selected, 'h'); }, locked);
+        ctxItem(menu, t('Flip vertically'), '', function(){ flipSelected(selected, 'v'); }, locked);
+        ctxItem(menu, t('Rotate +90°'), '', function(){ rotateSelected(selected, 90); }, locked);
+        ctxItem(menu, t('Rotate −90°'), '', function(){ rotateSelected(selected, -90); }, locked);
         ctxItem(menu, t('Bring forward'), '', function(){ layerOp(selected, 'up'); }, locked);
         ctxItem(menu, t('Send backward'), '', function(){ layerOp(selected, 'down'); }, locked);
         ctxItem(menu, t('Bring to front'), '', function(){ layerOp(selected, 'top'); }, locked);
@@ -3792,6 +3987,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       }
       if (clip.kind === 'timeline'){
         ctxSep(menu);
+        ctxItem(menu, t('Enter compound clip (进入编辑)'), '', function(){ enterCompoundClip(clip); }, selected.length !== 1 || !compoundRefOf(clip));
         ctxItem(menu, t('Unnest compound clip'), '', function(){
           edit([{ op:'timeline.unnest', clipId:clip.id }]).then(function(){ toast(t('Compound clip flattened')); }).catch(function(){});
         }, selected.length !== 1 || locked);
@@ -5029,6 +5225,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     }
     if (EMBED) bridgePost('stateChanged', { revision: state.revision, duration: state.model.duration });
     updateHistory(body);
+    updateTimelineChrome();
     var alive = function(id){ return body.model.lanes.some(function(lane){ return lane.clips.some(function(clip){ return clip.id === id; }); }); };
     state.selected = state.selected && alive(state.selected) ? state.selected : null;
     state.selection = state.selection.filter(alive);
@@ -5140,7 +5337,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   function reloadProject(){
     pausePlayback();
     api('/api/reload', { method:'POST', headers:{'content-type':'application/json'}, body:'{}' })
-      .then(function(body){ clearElementSelection(); state.tab = 'props'; applyProjectResponse(body); toast(t('Reloaded external files from disk')); })
+      .then(function(body){ clearElementSelection(); state.tab = 'props'; state.timelineStack = []; applyProjectResponse(body); toast(t('Reloaded external files from disk')); })
       .catch(function(error){ toast(error.message, true); });
   }
 
@@ -6150,6 +6347,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     el('delete').onclick = function(){ removeSelected(false); };
     el('ripple').onclick = function(){ removeSelected(true); };
     el('canvas-settings').onclick = openSettings;
+    el('timeline-back').onclick = function(){ selectEditingTimeline(null, false); };
     el('settings-close').onclick = function(){ el('settings-modal').classList.remove('open'); };
     el('settings-cancel').onclick = function(){ el('settings-modal').classList.remove('open'); };
     el('settings-save').onclick = saveSettings;
