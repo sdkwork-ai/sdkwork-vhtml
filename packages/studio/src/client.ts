@@ -474,7 +474,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       </div>
       <div class="field"><label>Width</label><input id="set-width" type="number" min="16" /></div>
       <div class="field"><label>Height</label><input id="set-height" type="number" min="16" /></div>
-      <div class="field"><label>Frame rate</label><select id="set-fps"><option value="24">24 fps</option><option value="25">25 fps</option><option value="30">30 fps</option><option value="50">50 fps</option><option value="60">60 fps</option></select></div>
+      <div class="field"><label>Frame rate</label><select id="set-fps"><option value="24/1">24 fps</option><option value="24000/1001">23.976 fps (film)</option><option value="25/1">25 fps</option><option value="30000/1001">29.97 fps (NTSC)</option><option value="30/1">30 fps</option><option value="50/1">50 fps</option><option value="60000/1001">59.94 fps (NTSC)</option><option value="60/1">60 fps</option></select></div>
       <div class="field"><label>Background</label><input id="set-background" type="text" placeholder="#000000" /></div>
       <div class="field full element-note">Applies to the composition (composition.set): canvas size, frame rate and background. Clips and scenes keep their authored layout.</div>
     </div>
@@ -542,7 +542,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 <script>
 (function(){
   'use strict';
-  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, timelineStack:[], attributeClipboard:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
+  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, timelineStack:[], attributeClipboard:null, assetSearch:'', laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
   var el = function(id){ return document.getElementById(id); };
   var stage = el('stage');
   var tracksEl = el('tracks');
@@ -1929,6 +1929,22 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
           grid.appendChild(field);
         });
         box.appendChild(grid);
+        var featherRow = document.createElement('div');
+        featherRow.className = 'field';
+        var featherSupported = p.shape === 'circle' || ((p.shape === 'ellipse' || p.shape === 'rect') && !Number(p.angle));
+        featherRow.innerHTML = '<label>' + t('Feather % (羽化)') + '</label>';
+        var feather = numberInput(Math.round((Number(p.feather) || 0) * 100), 5, function(value){
+          setMaskParams(clip, fx, { feather: Math.max(0, Math.min(95, parseFloat(value))) / 100 });
+        });
+        if (!featherSupported) feather.disabled = true;
+        featherRow.appendChild(feather);
+        box.appendChild(featherRow);
+        if (!featherSupported && Number(p.feather) > 0){
+          var featherNote = document.createElement('div');
+          featherNote.className = 'element-note';
+          featherNote.textContent = t('Feather renders on circle/ellipse/rect masks that are not rotated; this mask keeps a hard edge.');
+          box.appendChild(featherNote);
+        }
         var invertRow = document.createElement('label');
         invertRow.style.display = 'flex';
         invertRow.style.gap = '6px';
@@ -3243,6 +3259,17 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     toolbar.className = 'asset-toolbar';
     var summary = state.assetSummary || {assets:state.assets.length, missing:0, unusedAssets:0};
     toolbar.innerHTML = '<span class="hint">' + summary.assets + ' assets · ' + summary.missing + ' missing · ' + summary.unusedAssets + ' unused</span><span class="grow"></span>';
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.placeholder = t('Search assets…');
+    search.value = state.assetSearch || '';
+    search.title = t('Filter the media pool by name or kind');
+    search.style.maxWidth = '150px';
+    search.addEventListener('input', function(){
+      state.assetSearch = search.value;
+      renderInspector();
+    });
+    toolbar.appendChild(search);
     var importBtn = document.createElement('button');
     importBtn.textContent = '＋ Import';
     importBtn.className = 'primary';
@@ -3272,7 +3299,11 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     }
     var grid = document.createElement('div');
     grid.className = 'asset-grid';
+    var needle = (state.assetSearch || '').trim().toLowerCase();
+    var visibleCount = 0;
     state.assets.forEach(function(asset){
+      if (needle && (asset.id + ' ' + asset.kind).toLowerCase().indexOf(needle) < 0) return;
+      visibleCount++;
       var card = document.createElement('div');
       card.className = 'asset-card' + (state.assetSelected === asset.id ? ' selected' : '') + (asset.exists === false ? ' missing' : '');
       card.draggable = true;
@@ -3333,6 +3364,9 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       grid.appendChild(card);
     });
     box.appendChild(grid);
+    if (needle && !visibleCount){
+      box.appendChild(htmlNode('<div class="inspector-empty">' + escapeHtml(t('No assets match the search.')) + '</div>'));
+    }
     box.appendChild(htmlNode('<div class="hint">Drag an asset onto a compatible lane, or press + to add it at the playhead. Images and SVG default to 3s; video/audio use their probed duration.</div>'));
   }
 
@@ -3961,6 +3995,12 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         ctxItem(menu, t('Flip vertically'), '', function(){ flipSelected(selected, 'v'); }, locked);
         ctxItem(menu, t('Rotate +90°'), '', function(){ rotateSelected(selected, 90); }, locked);
         ctxItem(menu, t('Rotate −90°'), '', function(){ rotateSelected(selected, -90); }, locked);
+        ctxItem(menu, t('Reset transform'), '', function(){
+          var ops = layoutVisualTargets(selected).map(function(entry){
+            return { op:'clip.set', clipId:entry.clip.id, props:{ transform:{ x:0, y:0, scaleX:1, scaleY:1, rotate:0, anchorX:0.5, anchorY:0.5 } } };
+          });
+          if (ops.length) edit(ops).then(function(){ toast(t('Transform reset')); }).catch(function(){});
+        }, locked);
         ctxItem(menu, t('Bring forward'), '', function(){ layerOp(selected, 'up'); }, locked);
         ctxItem(menu, t('Send backward'), '', function(){ layerOp(selected, 'down'); }, locked);
         ctxItem(menu, t('Bring to front'), '', function(){ layerOp(selected, 'top'); }, locked);
@@ -4544,8 +4584,13 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   function openSettings(){
     el('set-width').value = state.model.width;
     el('set-height').value = state.model.height;
-    el('set-fps').value = String(Math.round(state.model.fps));
-    if (el('set-fps').selectedIndex < 0) el('set-fps').value = '30';
+    var fpsSelect = el('set-fps');
+    fpsSelect.value = state.model.frameRate || String(Math.round(state.model.fps));
+    if (fpsSelect.selectedIndex < 0){
+      // Unknown rational: fall back to the nearest integer option.
+      fpsSelect.value = String(Math.round(state.model.fps));
+      if (fpsSelect.selectedIndex < 0) fpsSelect.value = '30/1';
+    }
     el('set-background').value = state.model.background || '';
     var grid = el('ratio-grid');
     var buttons = grid.querySelectorAll('button');
@@ -4557,13 +4602,14 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   function saveSettings(){
     var width = Math.max(16, Math.round(Number(el('set-width').value) || state.model.width));
     var height = Math.max(16, Math.round(Number(el('set-height').value) || state.model.height));
-    var fps = Number(el('set-fps').value) || Math.round(state.model.fps);
+    var frameRate = el('set-fps').value || (Math.round(state.model.fps) + '/1');
     var background = el('set-background').value.trim() || state.model.background;
-    var operations = [{ op:'composition.set', composition:{ width:width, height:height, frameRate:String(fps) + '/1', background:background } }];
+    var operations = [{ op:'composition.set', composition:{ width:width, height:height, frameRate:frameRate, background:background } }];
     edit(operations).then(function(){
       el('settings-modal').classList.remove('open');
       resizeStage();
-      toast('Canvas ' + width + '×' + height + ' @ ' + fps + 'fps');
+      var fpsLabel = el('set-fps').selectedOptions && el('set-fps').selectedOptions[0] ? el('set-fps').selectedOptions[0].textContent : frameRate;
+      toast('Canvas ' + width + '×' + height + ' @ ' + fpsLabel);
     }).catch(function(){});
   }
 

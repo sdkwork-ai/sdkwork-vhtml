@@ -288,7 +288,7 @@ VHTML 1.1 不承诺：
 | `vignette` | `amount` | 暗角 |
 | `tint` / `color-overlay` | `color/opacity/blend` | 颜色叠加 |
 | `rounded` | `radius` | 圆角 |
-| `mask` | `shape/inset/points/value` | `clip-path` 遮罩 |
+| `mask` | `shape/inset/points/value/feather` | `clip-path` 遮罩；`feather` >0 时改用渐变 `mask-image` 羽化边缘（圆形任意角度；椭圆/矩形需未旋转），硬边回退为 `points` 多边形 |
 | `chroma-key` | `color/tolerance/spill` | 媒体色键（参考实现用 Canvas） |
 | `filter` | `value` | 原始 CSS filter 片段 |
 | `css` | `style/value` | 受控自定义 CSS 片段 |

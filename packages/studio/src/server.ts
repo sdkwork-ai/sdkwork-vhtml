@@ -249,6 +249,7 @@ interface StudioModel {
   width: number;
   height: number;
   fps: number;
+  frameRate: string;
   duration: number;
   background: string;
   scenes: Array<{ id: string; name: string; src?: string; duration: number }>;
@@ -435,6 +436,7 @@ function studioModel(project: Project, editingTimelineId?: string): StudioModel 
     width: project.composition.width,
     height: project.composition.height,
     fps: project.composition.frameRate.num / project.composition.frameRate.den,
+    frameRate: `${project.composition.frameRate.num}/${project.composition.frameRate.den}`,
     duration: toNumber(timeline?.duration ?? project.composition.duration),
     background: project.composition.background,
     scenes: project.scenes.map((scene) => ({

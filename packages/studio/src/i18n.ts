@@ -415,6 +415,14 @@ const zh: Record<string, string> = {
   'Quick transform (mirror / rotate)': '快捷变换（镜像 / 旋转）',
   'Flip H': '镜像 H',
   'Flip V': '镜像 V',
+  // round 7 — feather, fractional fps, asset search, reset transform
+  'Feather % (羽化)': '羽化 %',
+  'Feather renders on circle/ellipse/rect masks that are not rotated; this mask keeps a hard edge.': '羽化仅对未旋转的圆形/椭圆/矩形蒙版生效；当前蒙版保持硬边。',
+  'Search assets…': '搜索素材…',
+  'Filter the media pool by name or kind': '按名称或类型筛选素材库',
+  'No assets match the search.': '没有符合搜索条件的素材。',
+  'Reset transform': '重置变换',
+  'Transform reset': '变换已重置',
   // language toggle
   '中文': 'English',
   'Switch UI language': '切换界面语言',

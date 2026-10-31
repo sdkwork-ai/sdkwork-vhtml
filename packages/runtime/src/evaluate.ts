@@ -70,6 +70,8 @@ export interface ClipStyleState {
   transform: string;
   filter: string;
   clipPath?: string;
+  maskImage?: string;
+  maskComposite?: string;
   borderRadius?: string;
   mixBlendMode: string;
   zIndex: number;
@@ -473,17 +475,22 @@ function collectEffects(
   clip: Clip,
   layer: LayerAccumulator,
   extensions: Project['extensions'] | undefined,
+  aspect: number,
 ): {
   overlays: EffectOverlay[];
   chromaKey?: ChromaKeyState;
   borderRadius?: string;
   clipPath?: string;
+  maskImage?: string;
+  maskComposite?: string;
   issues: string[];
 } {
   const overlays: EffectOverlay[] = [];
   let chromaKey: ChromaKeyState | undefined;
   let borderRadius = layer.borderRadius;
   let clipPath = layer.clipPath;
+  let maskImage: string | undefined;
+  let maskComposite: string | undefined;
   const issues: string[] = [];
 
   for (const declared of clip.effects) {
@@ -557,12 +564,37 @@ function collectEffects(
         break;
       }
       case 'mask': {
-        // An explicit points polygon wins: shape editors (Studio mask studio)
-        // author sized/rotated geometry there. Legacy shape keywords render
-        // their native primitives only when no points are authored.
+        // An explicit points polygon wins for hard masks: shape editors
+        // (Studio mask studio) author sized/rotated geometry there. Legacy
+        // shape keywords render their native primitives only when no points
+        // are authored. A nonzero `feather` switches to a gradient mask
+        // instead of clip-path for the shapes gradients can express exactly
+        // (circle always; ellipse/rect unrotated) — alpha ramps are the
+        // feather, determinism is unaffected.
         const points = effectString(effect, ['points'], '');
         const shape = effectString(effect, ['shape'], 'inset');
-        if (points) {
+        const feather = clamp(effectNumber(effect, ['feather'], 0), 0, 0.95);
+        const size = clamp(effectNumber(effect, ['size'], 60), 1, 200);
+        const cx = clamp(effectNumber(effect, ['cx'], 50), -50, 150);
+        const cy = clamp(effectNumber(effect, ['cy'], 50), -50, 150);
+        const angle = effectNumber(effect, ['angle'], 0);
+        const solidStop = Math.round((1 - feather) * 10_000) / 100;
+        const featheredCircle = feather > 0 && shape === 'circle';
+        const featheredSymmetric = feather > 0 && (shape === 'ellipse' || shape === 'rect') && Math.abs(angle) < 0.01;
+        if (featheredCircle || featheredSymmetric) {
+          const rx = size / 2;
+          const ry = shape === 'ellipse' ? size / 2 : rx * aspect;
+          if (shape === 'rect') {
+            const fx = rx * feather;
+            const fy = ry * feather;
+            const gradient = (deg: number, lo: number, hi: number, featherHalf: number): string =>
+              `linear-gradient(${deg}deg, transparent ${Math.round((lo - featherHalf) * 1000) / 1000}%, #000 ${Math.round(lo * 1000) / 1000}%, #000 ${Math.round(hi * 1000) / 1000}%, transparent ${Math.round((hi + featherHalf) * 1000) / 1000}%)`;
+            maskImage = `${gradient(90, cx - rx, cx + rx, fx)}, ${gradient(180, cy - ry, cy + ry, fy)}`;
+            maskComposite = 'intersect';
+          } else {
+            maskImage = `radial-gradient(${Math.round(rx * 1000) / 1000}% ${Math.round(ry * 1000) / 1000}% at ${Math.round(cx * 1000) / 1000}% ${Math.round(cy * 1000) / 1000}%, #000 ${solidStop}%, transparent 100%)`;
+          }
+        } else if (points) {
           clipPath = `polygon(${points})`;
         } else if (shape === 'circle') {
           clipPath = 'circle(50% at 50% 50%)';
@@ -596,7 +628,7 @@ function collectEffects(
         issues.push(`unsupported visual effect "${effect.type}" on clip "${clip.id}"`);
     }
   }
-  return { overlays, chromaKey, borderRadius, clipPath, issues };
+  return { overlays, chromaKey, borderRadius, clipPath, maskImage, maskComposite, issues };
 }
 
 function clipAnimationTime(animation: Animation, projectTime: Rational, localTime: Rational): Rational {
@@ -611,6 +643,7 @@ function sampleClipLayer(
   trackOpacity: number,
   issues: string[],
   extensions: Project['extensions'] | undefined = undefined,
+  aspect = 16 / 9,
 ): ClipStyleState {
   const layer: LayerAccumulator = {
     x: clip.transform.x,
@@ -648,23 +681,26 @@ function sampleClipLayer(
     if (animation.property === 'volume' || animation.property === 'pan') continue;
     applyAnimatedProperty(layer, animation.property, sample.value, animation.compose);
   }
-  const effects = collectEffects(clip, layer, extensions);
+  const effects = collectEffects(clip, layer, extensions, aspect);
   const style = buildLayerStyle(layer, trackOpacity);
   style.overlays = effects.overlays;
   style.chromaKey = effects.chromaKey;
   style.clipPath = effects.clipPath ?? style.clipPath;
+  style.maskImage = effects.maskImage;
+  style.maskComposite = effects.maskComposite;
   style.borderRadius = effects.borderRadius ?? style.borderRadius;
   if (clip.crop) {
     // Normative crop semantics: an inset region reveal — the content outside
     // the crop rectangle is hidden, the layer box itself never rescales (use
     // transform.scale to refill if desired). An explicit mask effect owns the
-    // same clip-path channel and wins; the conflict is reported, never silent.
+    // same reveal channel (clip-path or feathered mask-image) and wins; the
+    // conflict is reported, never silent.
     const percent = (value: number): string => {
       const rounded = Math.round(value * 1_000_000) / 10_000;
       return String(rounded);
     };
     const cropPath = `inset(${percent(clip.crop.top)}% ${percent(clip.crop.right)}% ${percent(clip.crop.bottom)}% ${percent(clip.crop.left)}%)`;
-    if (style.clipPath) {
+    if (style.clipPath || style.maskImage) {
       issues.push(`clip "${clip.id}" has both a crop and a mask clip-path; the mask wins`);
     } else {
       style.clipPath = cropPath;
@@ -965,6 +1001,7 @@ export function evaluateFrame(
         track.opacity,
         issues,
         project.extensions,
+        project.composition.width / project.composition.height,
       );
       style.zIndex = isCaption ? 900_000 + clip.z : baseOrder + clip.z;
       const state: ClipFrameState = {

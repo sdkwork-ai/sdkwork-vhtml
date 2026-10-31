@@ -203,7 +203,21 @@ function applyClipStyle(layer: HTMLElement, state: ClipFrameState): void {
   layer.style.opacity = String(style.opacity);
   layer.style.transform = style.transform || 'none';
   layer.style.filter = style.filter || 'none';
-  layer.style.clipPath = style.clipPath ?? 'none';
+  if (style.maskImage) {
+    // Feathered mask: an alpha ramp rides the mask-image channel; clip-path
+    // stays empty so the two reveal channels never stack.
+    layer.style.clipPath = 'none';
+    layer.style.maskImage = style.maskImage;
+    layer.style.setProperty('-webkit-mask-image', style.maskImage);
+    if (style.maskComposite) {
+      layer.style.maskComposite = style.maskComposite;
+      layer.style.setProperty('-webkit-mask-composite', 'source-in');
+    }
+  } else {
+    layer.style.maskImage = 'none';
+    layer.style.setProperty('-webkit-mask-image', 'none');
+    layer.style.clipPath = style.clipPath ?? 'none';
+  }
   layer.style.borderRadius = style.borderRadius ?? '0';
   layer.style.mixBlendMode = style.mixBlendMode || 'normal';
   layer.style.zIndex = String(style.zIndex);
