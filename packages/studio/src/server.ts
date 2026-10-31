@@ -177,6 +177,7 @@ interface StudioClip {
   blend: string;
   fit: string;
   ref?: string;
+  nestedClips?: number;
   text?: string;
   speaker?: string;
   style?: Record<string, string>;
@@ -381,6 +382,10 @@ function studioModel(project: Project, editingTimelineId?: string): StudioModel 
           volume: clip.volume,
           pan: clip.pan,
           ref: clip.ref,
+          nestedClips:
+            clip.kind === 'timeline' && clip.ref
+              ? findTimeline(project, clip.ref.replace(/^timeline:/, ''))?.tracks.reduce((total, track) => total + track.clips.length, 0)
+              : undefined,
           text: clip.kind === 'caption' ? clip.text : undefined,
           speaker: clip.kind === 'caption' ? clip.speaker : undefined,
           style: clip.kind === 'caption' ? clip.style : undefined,

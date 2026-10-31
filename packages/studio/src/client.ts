@@ -946,6 +946,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         if (clip.hasTimeRemap) chips.push('ramp');
         if (clip.muted) chips.push('muted');
         if (clip.freeze !== undefined && clip.freeze !== null) chips.push('freeze');
+        if (clip.kind === 'timeline' && clip.nestedClips !== undefined) chips.push('▶ ' + clip.nestedClips);
         block.innerHTML = '<div class="label">' + escapeHtml(clip.label) + '</div><div class="sub">' + clip.kind + ' · ' + clip.duration.toFixed(2) + 's</div><div class="handle left" data-handle="left"></div><div class="handle right" data-handle="right"></div>';
         if (filmstrip) block.appendChild(filmstrip);
         if (clip.metadata && clip.metadata.clipColor){
@@ -1084,8 +1085,14 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
           });
         });
         block.ondblclick = function(event){
-          // CapCut-style inline rename: double-click the clip body.
+          // CapCut-style inline rename: double-click the clip body. Compound
+          // clips enter the nested editing view instead (rename via right-click
+          // or the Properties tab).
           if (event.target.closest('.handle') || event.target.closest('.volume-line') || event.target.closest('.volume-dot') || event.target.closest('.kf-diamond')) return;
+          if (clip.kind === 'timeline' && compoundRefOf(clip)){
+            enterCompoundClip(clip);
+            return;
+          }
           var name = window.prompt('Clip name', clip.label || '');
           if (name === null || !name.trim() || name === clip.label) return;
           edit([{ op:'clip.set', clipId:clip.id, props:{ name:name.trim() } }]).catch(function(){});
@@ -2032,6 +2039,136 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       row.appendChild(button);
     });
     box.appendChild(row);
+  }
+
+  // ---------- animation presets (CapCut 入场/出场/循环) ----------
+
+  // Entrance/exit/loop animation presets. Transform tracks ride compose
+  // 'add' so they offset the clip's authored transform instead of replacing
+  // it; opacity uses 'replace' with absolute endpoints (alpha must not stack).
+  var ANIMATION_PRESETS = [
+    { id:'fade-in', kind:'in', label:'Fade in (淡入)', easing:'ease-out', tracks:[
+      { property:'opacity', compose:'replace', points:[[0, 0], [1, '@opacity']] },
+    ] },
+    { id:'slide-left-in', kind:'in', label:'Slide in from left (左侧滑入)', easing:'ease-out', tracks:[
+      { property:'x', compose:'add', points:[[0, -160], [1, 0]] },
+    ] },
+    { id:'slide-right-in', kind:'in', label:'Slide in from right (右侧滑入)', easing:'ease-out', tracks:[
+      { property:'x', compose:'add', points:[[0, 160], [1, 0]] },
+    ] },
+    { id:'slide-up-in', kind:'in', label:'Slide in from bottom (底部滑入)', easing:'ease-out', tracks:[
+      { property:'y', compose:'add', points:[[0, 160], [1, 0]] },
+    ] },
+    { id:'slide-down-in', kind:'in', label:'Slide in from top (顶部滑入)', easing:'ease-out', tracks:[
+      { property:'y', compose:'add', points:[[0, -160], [1, 0]] },
+    ] },
+    { id:'zoom-in-in', kind:'in', label:'Zoom in (放大进入)', easing:'ease-out', tracks:[
+      { property:'scaleX', compose:'add', points:[[0, -0.35], [1, 0]] },
+      { property:'scaleY', compose:'add', points:[[0, -0.35], [1, 0]] },
+    ] },
+    { id:'bounce-in', kind:'in', label:'Bounce in (弹跳进入)', easing:'ease-out', tracks:[
+      { property:'scaleX', compose:'add', points:[[0, -0.45], [0.7, 0.1, 'ease-in-out'], [1, 0]] },
+      { property:'scaleY', compose:'add', points:[[0, -0.45], [0.7, 0.1, 'ease-in-out'], [1, 0]] },
+    ] },
+    { id:'fade-out', kind:'out', label:'Fade out (淡出)', easing:'ease-in', tracks:[
+      { property:'opacity', compose:'replace', points:[[0, '@opacity'], [1, 0]] },
+    ] },
+    { id:'slide-left-out', kind:'out', label:'Slide out left (左滑出)', easing:'ease-in', tracks:[
+      { property:'x', compose:'add', points:[[0, 0], [1, -160]] },
+    ] },
+    { id:'slide-right-out', kind:'out', label:'Slide out right (右滑出)', easing:'ease-in', tracks:[
+      { property:'x', compose:'add', points:[[0, 0], [1, 160]] },
+    ] },
+    { id:'slide-up-out', kind:'out', label:'Slide out top (上滑出)', easing:'ease-in', tracks:[
+      { property:'y', compose:'add', points:[[0, 0], [1, -160]] },
+    ] },
+    { id:'slide-down-out', kind:'out', label:'Slide out bottom (下滑出)', easing:'ease-in', tracks:[
+      { property:'y', compose:'add', points:[[0, 0], [1, 160]] },
+    ] },
+    { id:'zoom-out-out', kind:'out', label:'Zoom out (缩小退出)', easing:'ease-in', tracks:[
+      { property:'scaleX', compose:'add', points:[[0, 0], [1, -0.35]] },
+      { property:'scaleY', compose:'add', points:[[0, 0], [1, -0.35]] },
+    ] },
+    { id:'pulse', kind:'loop', label:'Pulse (脉冲)', easing:'ease-in-out', tracks:[
+      { property:'scaleX', compose:'add', points:[[0, 0], [0.5, 0.05], [1, 0]] },
+      { property:'scaleY', compose:'add', points:[[0, 0], [0.5, 0.05], [1, 0]] },
+    ] },
+    { id:'sway', kind:'loop', label:'Sway (摇摆)', easing:'ease-in-out', tracks:[
+      { property:'rotate', compose:'add', points:[[0, -2], [0.5, 2], [1, -2]] },
+    ] },
+  ];
+  function applyAnimationPreset(clip, preset){
+    if (!isVisualClip(clip)) return toast(t('Animations need a visual clip'), true);
+    if (clip.duration < 0.12) return toast(t('Clip is too short for an animation preset'), true);
+    var edge = Math.min(0.45, clip.duration * 0.5);
+    var duration = Number(clip.duration.toFixed(6));
+    var stamp = Date.now().toString(36) + '-' + (++effectIdCounter).toString(36);
+    var baseOpacity = Number(clip.opacity) || 1;
+    function resolve(value){
+      return value === '@opacity' ? baseOpacity : value;
+    }
+    var tracks = preset.tracks.map(function(spec){
+      var span = preset.kind === 'loop' ? duration : edge;
+      return {
+        id: 'anim-' + preset.id + '-' + clip.id + '-' + spec.property + '-' + stamp,
+        property: spec.property,
+        keyframes: spec.points.map(function(point){
+          var keyframe = { time: Number((point[0] * span).toFixed(6)), value: resolve(point[1]) };
+          if (point[2]) keyframe.easing = point[2];
+          return keyframe;
+        }),
+        start: Number((preset.kind === 'out' ? duration - edge : 0).toFixed(6)),
+        duration: Number(span.toFixed(6)),
+        timeBase: 'clip',
+        easing: preset.easing,
+        iterations: 1,
+        direction: 'normal',
+        fill: 'both',
+        compose: spec.compose,
+        enabled: true,
+      };
+    });
+    var properties = tracks.map(function(track){ return track.property; });
+    var replaced = (clip.animations || []).filter(function(animation){
+      return animation.enabled !== false && properties.indexOf(animation.property) >= 0;
+    }).length;
+    var nextAnimations = (clip.animations || []).filter(function(animation){
+      return properties.indexOf(animation.property) < 0;
+    }).concat(tracks);
+    edit([{ op:'clip.set', clipId:clip.id, props:{ animations: nextAnimations } }])
+      .then(function(){
+        toast(t('Animation applied: ') + t(preset.label) + (replaced ? t(' (replaced ') + replaced + t(' track(s))') : ''));
+      })
+      .catch(function(error){ toast(error.message || 'Animation rejected', true); });
+  }
+  function renderAnimationLibrary(box){
+    var selected = selectedClip();
+    var target = selected && isVisualClip(selected.clip) ? selected.clip : null;
+    var hint = document.createElement('div');
+    hint.className = 'element-note';
+    hint.textContent = t('One-click entrance/exit/loop animations for the selected clip. Transform presets offset the authored transform; applying replaces existing tracks on the same property.');
+    box.appendChild(hint);
+    [
+      ['in', t('Entrance (入场)')],
+      ['out', t('Exit (出场)')],
+      ['loop', t('Loop (循环)')],
+    ].forEach(function(group){
+      var title = document.createElement('div');
+      title.className = 'section-title';
+      title.textContent = group[1];
+      box.appendChild(title);
+      var row = document.createElement('div');
+      row.className = 'btn-row';
+      ANIMATION_PRESETS.filter(function(preset){ return preset.kind === group[0]; }).forEach(function(preset){
+        var button = document.createElement('button');
+        button.textContent = t(preset.label);
+        button.title = t('Apply to the selected clip');
+        button.disabled = !target;
+        button.onclick = function(){ applyAnimationPreset(target, preset); };
+        row.appendChild(button);
+      });
+      box.appendChild(row);
+    });
   }
 
   // ---------- layout presets (picture-in-picture / splits) ----------
@@ -3252,6 +3389,12 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     });
     box.appendChild(transitionGrid);
     box.appendChild(htmlNode('<div class="hint">' + t('Transitions need two overlapping clips; the drop lands inside their overlap window with a 0.4s (clamped) duration.') + '</div>'));
+
+    var animationTitle = document.createElement('div');
+    animationTitle.className = 'section-title';
+    animationTitle.textContent = t('Animation presets (动画预设)');
+    box.appendChild(animationTitle);
+    renderAnimationLibrary(box);
   }
 
   function renderAssets(box){
