@@ -35,3 +35,8 @@ target/
 # ---- generated render output and one-off probes ----
 examples/**/renders/
 .tmp-*
+
+# ---- local environment files (never commit) ----
+.env
+.env.*
+!.env.example
