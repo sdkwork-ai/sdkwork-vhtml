@@ -698,6 +698,10 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       state.assetSummary = body.summary || null;
       if (state.assetSelected && !assetById(state.assetSelected)) state.assetSelected = null;
       if (state.tab === 'assets') renderInspector();
+      // A freshly inserted sticker needs the asset inventory before its
+      // Properties section (Sticker · colour) can render.
+      var selectedEntry = state.selected ? clipById(state.selected) : null;
+      if (state.tab === 'props' && selectedEntry && stickerAssetOf(selectedEntry.clip)) renderInspector();
       if (state.model && !state.dragging) renderTimeline();
       var missing = body.summary ? body.summary.missing : 0;
       el('title').title = missing ? missing + ' referenced file(s) missing' : (body.root || '');
