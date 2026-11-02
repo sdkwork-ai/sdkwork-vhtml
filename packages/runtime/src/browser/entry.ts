@@ -675,6 +675,23 @@ const hostApi = {
   seek,
   play,
   pause,
+  /**
+   * Host live preview: patch a clip of the in-memory project and re-render
+   * the current frame through the exact evaluate path a committed edit takes
+   * (filters, SVG filter chains and overlays included). The host reloads the
+   * stage once the real edit lands, so the patch never outlives the gesture.
+   */
+  previewClip(clipId: string, patch: Record<string, unknown>): Promise<unknown> {
+    for (const timeline of project.timelines) {
+      for (const track of timeline.tracks) {
+        const clip = track.clips.find((candidate) => candidate.id === clipId);
+        if (!clip) continue;
+        Object.assign(clip, patch);
+        return seek(currentTime, currentFrame);
+      }
+    }
+    return Promise.resolve(undefined);
+  },
   state: () => ({
     time: currentTime,
     frame: currentFrame,

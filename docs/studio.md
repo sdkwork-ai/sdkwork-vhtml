@@ -129,7 +129,13 @@ validated Core Model edit (undoable, saved atomically).
 
 ![Ruler context menu](./screenshots/studio-ruler-menu.png)
 - **Markers** (`M`) appear as flags on the ruler; In (`I`) / Out (`O`) points
-  highlight the working range and feed the export dialog.
+  highlight the working range and feed the export dialog. **Auto beat
+  (自动踩点)**: right-click an audio/video clip → Beat markers I (strong
+  beats) / II (every beat). The server decodes the asset's audio (FFmpeg →
+  mono PCM, cached), estimates tempo by autocorrelation of the onset
+  envelope and snaps a beat grid to the phase with the most onset energy;
+  markers land inside the clip's source window (speed/sourceIn aware) as
+  coloured flags (♪ I pink, ♪ II orange) and one entry clears them all.
 - Video clips show a **filmstrip** of poster tiles spread across the clip's
   source window (`/api/media/poster`, disk-cached); audio-capable clips
   draw a real waveform from `/api/media/peaks` (FFmpeg-decoded, cached under
@@ -208,6 +214,30 @@ Select a clip to edit everything the model supports:
   tint, color-overlay, chroma-key, rounded, mask, filter, css) with friendly
   labels, per-parameter editing, enable/disable and remove. With a
   multi-selection, adding an effect applies it to the whole selection.
+- **Adjust panel (调节)**: CapCut-style colour & tone sliders — brightness,
+  contrast, saturation, temperature, tint, sharpen, highlights, shadows,
+  fade, vignette and grain, each −100..100 (colour groups one-sided 0..100),
+  double-click a label to reset one slider. One-click **looks** (Clarity /
+  Warm / Cool / Vintage / Cinematic / B&W / Vivid) set the whole panel; an
+  all-zero panel removes the effect so documents never carry no-op rows.
+  Sliders preview **live** on the stage (the stage runtime re-renders the
+  patched clip through the same evaluate path export uses) and save on
+  release as one undoable edit. Colour params elsewhere (chroma-key, tint,
+  drop-shadow…) gain a native swatch plus an **eyedropper** that samples any
+  pixel on screen (EyeDropper API, Chromium).
+- **Text style (文本样式)**: caption clips expose structured typography —
+  font family (suggestions include the project's font assets), size, bold,
+  italic, colour, stroke (width + colour with `paint-order: stroke fill`),
+  shadow (soft/hard/glow/3D-block templates), background + corner radius,
+  letter spacing, line height, alignment, bottom offset and opacity — all
+  stored as the normative per-cue `style` map. **花字 presets** (Classic
+  white, Bold outline, Neon, Boxed, Gradient, Variety) restyle the typography
+  keys while keeping position and alignment; "Clear text style" falls back to
+  the lane defaults.
+- **Keyframes travel with attributes**: *Copy attributes* also carries the
+  animation tracks; *Paste attributes* drops them onto compatible clips
+  (volume/pan only onto audible clips), and a separate *Paste keyframes*
+  menu entry replaces the target's tracks of the same properties only.
 
 ## Effects & transitions library
 
@@ -313,6 +343,7 @@ Completed jobs link the video, captions sidecar and report.
 | `/api/reload` | POST | re-read external files and reset the edit session |
 | `/api/presets` | GET | delivery preset catalog for the export dialog |
 | `/api/media/peaks` | GET | `?asset=<id>` normalized audio waveform buckets (cached) |
+| `/api/media/beats` | GET | `?asset=<id>` 自动踩点 — `{ bpm, beats, strong, onsets }` onset + beat-grid detection (cached) |
 | `/api/media/poster` | GET | `?asset=<id>&t=<sec>` JPEG frame thumbnail (cached) |
 | `/api/clipboard` | POST | `{ action: copy\|paste\|clear, clipIds?, start? }` REST clipboard shim |
 | `/api/snapshot` | POST | `{ time }` renders one frame to `renders/*.png` (job) |

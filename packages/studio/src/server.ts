@@ -226,6 +226,7 @@ interface StudioMarker {
   name?: string;
   type: string;
   color?: string;
+  metadata?: Record<string, string>;
 }
 
 interface StudioShot {
@@ -480,6 +481,7 @@ function studioModel(project: Project, editingTimelineId?: string): StudioModel 
       name: marker.name,
       type: marker.type,
       color: marker.color,
+      metadata: marker.metadata,
     })),
     timelineId: timeline?.id ?? project.mainTimeline,
     mainTimelineId: project.mainTimeline,
@@ -637,6 +639,166 @@ async function audioPeaks(file: string): Promise<{ buckets: number[]; durationSe
     buckets.push(Math.round(peak * 1000) / 1000);
   }
   return { buckets, durationSeconds: sampleCount / 8000 };
+}
+
+const BEAT_SAMPLE_RATE = 11025;
+const BEAT_HOP = 128; // ≈11.6 ms onset resolution — half a 60 BPM 16th note
+
+/**
+ * Decode to mono 11 025 Hz PCM and detect musical onsets plus a beat grid:
+ * energy flux → onset peaks; tempo from onset-envelope autocorrelation
+ * (60..200 BPM); the beat grid snaps to the phase with the most onset
+ * energy. Deterministic pure math on the decoded PCM — the same file always
+ * yields the same beats (content-addressed cache on top).
+ */
+async function audioBeats(file: string): Promise<{
+  bpm: number;
+  beats: number[];
+  strong: number[];
+  onsets: number[];
+  durationSeconds: number;
+}> {
+  const decoded = await runTool(
+    ffmpegPath(),
+    ['-v', 'error', '-i', file, '-vn', '-ac', '1', '-ar', String(BEAT_SAMPLE_RATE), '-f', 's16le', '-'],
+    { timeoutMs: 120_000, maxOutputBytes: 512 * 1024 * 1024 },
+  );
+  const sampleCount = Math.floor(decoded.stdout.length / 2);
+  const durationSeconds = sampleCount / BEAT_SAMPLE_RATE;
+  const frames = Math.max(0, Math.floor(sampleCount / BEAT_HOP) - 1);
+  const empty = { bpm: 0, beats: [] as number[], strong: [] as number[], onsets: [] as number[], durationSeconds };
+  if (frames < 8) return empty;
+  const energy: number[] = [];
+  for (let i = 0; i < frames; i++) {
+    let sum = 0;
+    const first = i * BEAT_HOP;
+    const last = Math.min(sampleCount, first + BEAT_HOP * 2);
+    for (let s = first; s < last; s++) {
+      const value = decoded.stdout.readInt16LE(s * 2) / 32768;
+      sum += value * value;
+    }
+    energy.push(Math.sqrt(sum / Math.max(1, last - first)));
+  }
+  const eps = 1e-4;
+  const flux: number[] = new Array(frames).fill(0);
+  for (let i = 1; i < frames; i++) {
+    const rise = 20 * (Math.log10(energy[i] + eps) - Math.log10(energy[i - 1] + eps));
+    flux[i] = Math.min(40, Math.max(0, rise));
+  }
+  const strength = flux.slice();
+  for (let i = 1; i < frames - 1; i++) strength[i] = (flux[i - 1] + 2 * flux[i] + flux[i + 1]) / 4;
+  const frameSeconds = BEAT_HOP / BEAT_SAMPLE_RATE;
+  // Onsets: local maxima above a local mean+std floor, ≥100 ms apart.
+  const window = Math.max(4, Math.round(1 / frameSeconds));
+  const onsets: number[] = [];
+  let lastOnset = -Infinity;
+  for (let i = 2; i < frames - 2; i++) {
+    if (strength[i] < strength[i - 1] || strength[i] < strength[i + 1]) continue;
+    const from = Math.max(0, i - window);
+    const to = Math.min(frames, i + window + 1);
+    const local = strength.slice(from, to);
+    const mean = local.reduce((a, b) => a + b, 0) / local.length;
+    const std = Math.sqrt(local.reduce((a, b) => a + (b - mean) * (b - mean), 0) / local.length);
+    if (strength[i] < mean + 0.6 * std || strength[i] < 0.6) continue;
+    if (i - lastOnset < Math.round(0.1 / frameSeconds)) continue;
+    onsets.push(i);
+    lastOnset = i;
+  }
+  // Tempo: autocorrelation of the mean-removed envelope over 60..200 BPM.
+  let bpm = 0;
+  let bestLag = 0;
+  let bestScore = 0;
+  const minLag = Math.round(60 / 200 / frameSeconds);
+  const maxLag = Math.round(60 / 60 / frameSeconds);
+  const meanStrength = strength.reduce((a, b) => a + b, 0) / frames;
+  const centered = strength.map((value) => value - meanStrength);
+  const scores = new Map<number, number>();
+  for (let lag = minLag; lag <= maxLag; lag++) {
+    let sum = 0;
+    for (let i = 0; i + lag < frames; i++) sum += centered[i] * centered[i + lag];
+    const score = sum / (frames - lag);
+    scores.set(lag, score);
+    // Slight prior towards the middle of the tempo range avoids the octave
+    // jump to double/half the real tempo on sparse envelopes.
+    const prior = 1 - Math.abs(lag / ((minLag + maxLag) / 2) - 1) * 0.15;
+    if (score * prior > bestScore) {
+      bestScore = score * prior;
+      bestLag = lag;
+    }
+  }
+  if (bestLag > 0 && bestScore > 0) {
+    // Parabolic refinement of the autocorrelation peak: with an 11.6 ms hop a
+    // raw integer lag reads 117.5 BPM for a 120 BPM track; the interpolated
+    // peak lands within a fraction of a frame.
+    const left = scores.get(bestLag - 1);
+    const right = scores.get(bestLag + 1);
+    const mid = scores.get(bestLag)!;
+    let refined = bestLag;
+    if (left !== undefined && right !== undefined) {
+      const denominator = left - 2 * mid + right;
+      if (denominator !== 0) refined = bestLag + Math.max(-0.5, Math.min(0.5, (left - right) / (2 * denominator)));
+    }
+    bpm = Math.round((60 / (refined * frameSeconds)) * 10) / 10;
+  } else {
+    return empty;
+  }
+  // Beat grid: the sub-frame phase (within one beat) with the most onset
+  // energy; strength is read through linear interpolation between hops.
+  const strengthAt = (frame: number): number => {
+    const index = Math.floor(frame);
+    const frac = frame - index;
+    const low = strength[Math.max(0, Math.min(frames - 1, index))];
+    const high = strength[Math.max(0, Math.min(frames - 1, index + 1))];
+    return low + (high - low) * frac;
+  };
+  let bestPhase = 0;
+  let bestPhaseScore = -Infinity;
+  const steps = Math.max(16, Math.round(bestLag));
+  for (let step = 0; step < steps; step++) {
+    const phase = (step / steps) * bestLag;
+    let sum = 0;
+    let count = 0;
+    for (let frame = phase; frame < frames; frame += bestLag) {
+      sum += strengthAt(frame);
+      count++;
+    }
+    if (count >= 2 && sum / count > bestPhaseScore) {
+      bestPhaseScore = sum / count;
+      bestPhase = phase;
+    }
+  }
+  const beats: number[] = [];
+  const beatStrengths: number[] = [];
+  // Classify strong/weak by linear frame energy (accents carry more RMS);
+  // the log flux above stays the detection signal only.
+  const energyAt = (frame: number): number => {
+    const index = Math.floor(frame);
+    const frac = frame - index;
+    const low = energy[Math.max(0, Math.min(frames - 1, index))];
+    const high = energy[Math.max(0, Math.min(frames - 1, index + 1))];
+    return low + (high - low) * frac;
+  };
+  for (let frame = bestPhase; frame < frames; frame += bestLag) {
+    const peak = Math.max(energyAt(frame - 1), energyAt(frame), energyAt(frame + 1));
+    beats.push(Math.round(frame * frameSeconds * 1000) / 1000);
+    beatStrengths.push(peak);
+  }
+  const sorted = beatStrengths.slice().sort((a, b) => a - b);
+  // Strong beats are the top 40 %, and only peaks with actual energy — a
+  // flat/silent grid must not collapse "strong" onto every beat.
+  const strongThreshold = Math.max(sorted[Math.floor(sorted.length * 0.6)] ?? 0, 0.01);
+  const strong: number[] = [];
+  beats.forEach((time, index) => {
+    if (beatStrengths[index] >= strongThreshold) strong.push(time);
+  });
+  const round = (value: number): number => Math.round(value * 1000) / 1000;
+  return {
+    bpm,
+    beats,
+    strong,
+    onsets: onsets.map((frame) => round(frame * frameSeconds)),
+    durationSeconds,
+  };
 }
 
 /** Extract a single scaled JPEG frame for clip/asset thumbnails. */
@@ -1524,6 +1686,43 @@ export async function startStudio(input: string | undefined, options: StudioOpti
               return true;
             }
             sendJson(response, 502, { error: `waveform failed: ${(error as Error).message}` });
+          }
+          return true;
+        }
+        if (request.method === 'GET' && url.pathname === '/api/media/beats') {
+          // 自动踩点: onset + beat-grid detection over the asset's audio;
+          // same silent-response contract as /peaks for video-only sources.
+          const assetId = url.searchParams.get('asset') ?? '';
+          const found = resolveAssetFile(session.project, root, assetId);
+          if (typeof found === 'string') {
+            sendJson(response, 404, { error: found });
+            return true;
+          }
+          const { asset, file } = found;
+          const stat = fs.statSync(file);
+          const key = mediaCacheKey([asset.id, String(stat.mtimeMs), String(stat.size)]);
+          const cacheFile = path.join(mediaCacheDir, `beats-${key}.json`);
+          try {
+            const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8')) as { bpm: number; beats: number[]; strong: number[]; onsets: number[]; durationSeconds: number };
+            sendJson(response, 200, { ok: true, assetId, cached: true, ...cached });
+            return true;
+          } catch {
+            /* recompute below */
+          }
+          try {
+            const beats = await onceByKey(`beats:${cacheFile}`, () => withOneRetry(() => audioBeats(file)));
+            fs.mkdirSync(mediaCacheDir, { recursive: true });
+            fs.writeFileSync(cacheFile, JSON.stringify(beats), 'utf8');
+            sendJson(response, 200, { ok: true, assetId, cached: false, ...beats });
+          } catch (error) {
+            if ((error as Error).message.includes('does not contain any stream')) {
+              const silent = { bpm: 0, beats: [] as number[], strong: [] as number[], onsets: [] as number[], durationSeconds: 0 };
+              fs.mkdirSync(mediaCacheDir, { recursive: true });
+              fs.writeFileSync(cacheFile, JSON.stringify(silent), 'utf8');
+              sendJson(response, 200, { ok: true, assetId, cached: false, silent: true, ...silent });
+              return true;
+            }
+            sendJson(response, 502, { error: `beat detection failed: ${(error as Error).message}` });
           }
           return true;
         }

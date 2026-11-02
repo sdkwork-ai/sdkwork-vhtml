@@ -307,6 +307,24 @@ body.fullscreen-stage .inspector{display:none}
 .help-table td:first-child{color:var(--accent);font-variant-numeric:tabular-nums;white-space:nowrap;width:40%}
 .caption-style-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .caption-style-grid .full{grid-column:1/-1}
+.adjust-row{display:grid;grid-template-columns:minmax(64px,.8fr) minmax(0,2fr) 40px;gap:8px;align-items:center;font-size:11px}
+.adjust-row label{color:var(--muted);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.adjust-row label.touched{color:var(--text)}
+.adjust-row input[type=range]{width:100%;min-width:0;padding:0;height:18px;accent-color:var(--accent)}
+.adjust-row output{text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
+.look-row{display:flex;flex-wrap:wrap;gap:5px}
+.look-row button{padding:3px 9px;font-size:11px;border-radius:999px}
+.look-row button.active{border-color:var(--accent);color:var(--accent);background:#102b3a}
+.text-style-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.text-style-grid .full{grid-column:1/-1}
+.text-style-grid .row{display:flex;gap:6px;align-items:center}
+.text-style-grid .row input[type=color]{width:34px;height:26px;padding:1px 2px;flex:none}
+.text-style-grid .row input[type=text],.text-style-grid .row input[type=number]{flex:1;min-width:0}
+.text-style-grid button.on{border-color:var(--accent);color:var(--accent);background:#102b3a}
+.color-param{display:flex;gap:4px;align-items:center;min-width:0}
+.color-param input[type=color]{width:26px;height:24px;padding:1px;flex:none}
+.color-param input[type=text]{flex:1;min-width:0}
+.color-param button{flex:none;width:26px;padding:0;height:24px}
 .mixer-row{display:grid;grid-template-columns:minmax(120px,1.2fr) 34px minmax(140px,1fr) minmax(120px,.9fr);gap:10px;align-items:center;border:1px solid var(--line);border-radius:9px;background:#0a1220;padding:8px 10px;margin-bottom:8px}
 .mixer-row b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .mixer-row small{display:block;font-size:9px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
@@ -728,6 +746,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     timelineMarkers().forEach(function(marker){
       var flag = document.createElement('div');
       flag.className = 'marker-flag ' + (marker.type || 'marker');
+      if (marker.color) flag.style.background = marker.color;
       flag.style.left = (marker.time * rate) + 'px';
       flag.title = (marker.name || 'Marker') + ' · ' + fmtTime(marker.time);
       flag.addEventListener('pointerdown', function(event){
@@ -742,7 +761,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         event.stopPropagation();
         var name = window.prompt('Marker name', marker.name || '');
         if (name === null) return;
-        edit([{ op:'marker.remove', timelineId:state.model.id && markerTimelineId(), markerId:marker.id }, { op:'marker.add', timelineId:markerTimelineId(), marker:{ id:marker.id, time:marker.time, name:name, type:marker.type } }]).catch(function(){});
+        edit([{ op:'marker.remove', timelineId:state.model.id && markerTimelineId(), markerId:marker.id }, { op:'marker.add', timelineId:markerTimelineId(), marker:{ id:marker.id, time:marker.time, name:name, type:marker.type, color:marker.color, metadata:marker.metadata } }]).catch(function(){});
       };
       ruler.appendChild(flag);
     });
@@ -1266,6 +1285,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       box.appendChild(field(t('Z index'), 'number', clip.z, 1, function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ z:parseInt(value,10) || 0 } }]); }));
       box.appendChild(selectField('Fit', clip.fit, ['cover','contain','fill','none','scale-down'], function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ fit:value } }]); }));
       box.appendChild(selectField('Blend', clip.blend, ['normal','multiply','screen','overlay','darken','lighten','color-dodge','color-burn','soft-light','hard-light','difference','exclusion','hue','saturation','color','luminosity'], function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ blend:value } }]); }));
+      renderAdjustSection(box, clip);
       renderCropSection(box, clip);
       renderMaskSection(box, clip);
       renderCameraSection(box, clip);
@@ -1314,6 +1334,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       box.appendChild(textField('Speaker (optional)', clip.speaker || '', false, function(value){
         edit([{ op:'clip.set', clipId:clip.id, props:{ speaker:value.trim() } }]).catch(function(){});
       }));
+      renderTextStyleSection(box, clip);
     }
     var enableRow = document.createElement('div');
     enableRow.className = 'checks';
@@ -2266,7 +2287,24 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 
   // ---------- copy/paste attributes (CapCut 粘贴属性) ----------
 
-  var ATTRIBUTE_FIELDS = ['transform', 'opacity', 'blend', 'fit', 'crop', 'effects', 'audioEffects', 'volume', 'pan', 'fadeIn', 'fadeOut'];
+  var ATTRIBUTE_FIELDS = ['transform', 'opacity', 'blend', 'fit', 'crop', 'effects', 'audioEffects', 'volume', 'pan', 'fadeIn', 'fadeOut', 'animations'];
+  var ANIMATION_VISUAL_PROPERTIES = ['opacity', 'x', 'y', 'scale', 'scaleX', 'scaleY', 'rotate'];
+  function reIdAnimations(list){
+    return (list || []).map(function(animation, index){
+      var copy = JSON.parse(JSON.stringify(animation));
+      copy.id = animation.property + '-kf-pasted-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36) + '-' + index;
+      return copy;
+    });
+  }
+  // Keyframes only land on properties the target clip can carry: transform/
+  // opacity everywhere, volume/pan only on audible clips.
+  function animationsForClip(clip, animations){
+    var audible = clip.kind === 'video' || clip.kind === 'audio';
+    return (animations || []).filter(function(animation){
+      if (ANIMATION_VISUAL_PROPERTIES.indexOf(animation.property) >= 0) return true;
+      return audible && (animation.property === 'volume' || animation.property === 'pan');
+    });
+  }
   function copyAttributesOf(clip){
     var snapshot = {};
     ATTRIBUTE_FIELDS.forEach(function(fieldName){
@@ -2301,12 +2339,39 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
           if (fieldName === 'audioEffects' && clip.kind !== 'video' && clip.kind !== 'audio') return;
           value = reIdEffects(value);
         }
+        if (fieldName === 'animations'){
+          value = animationsForClip(clip, reIdAnimations(value));
+          if (!value.length) return;
+        }
         props[fieldName] = value;
       });
       return { op:'clip.set', clipId:clip.id, props:props };
     });
     return edit(ops).then(function(){
       toast(t('Attributes pasted to ') + targets.length + t(' clip(s)'));
+    }).catch(function(){});
+  }
+  function pasteKeyframesTo(ids){
+    var snapshot = state.attributeClipboard;
+    if (!snapshot || !(snapshot.animations || []).length) return toast(t('Keyframe clipboard is empty — copy attributes from a clip with keyframes first'), true);
+    var targets = ids.map(function(id){ return clipById(id); }).filter(function(entry){
+      return entry && !entry.lane.locked;
+    });
+    if (!targets.length) return toast(t('Nothing to paste onto'), true);
+    var ops = targets.map(function(entry){
+      var clip = entry.clip;
+      var incoming = animationsForClip(clip, reIdAnimations(snapshot.animations));
+      if (!incoming.length) return null;
+      // A pasted property track replaces the target's track of the same
+      // property — keyframes are clip-local, so times survive as authored.
+      var kept = (clip.animations || []).filter(function(animation){
+        return !incoming.some(function(track){ return track.property === animation.property; });
+      });
+      return { op:'clip.set', clipId:clip.id, props:{ animations: kept.concat(incoming) } };
+    }).filter(function(op){ return op; });
+    if (!ops.length) return toast(t('Nothing to paste onto'), true);
+    return edit(ops).then(function(){
+      toast(t('Keyframes pasted to ') + ops.length + t(' clip(s)'));
     }).catch(function(){});
   }
 
@@ -2646,6 +2711,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     'chroma-key': { params:{ color:'#00ff00', tolerance:0.25, spill:0.15 } },
     'rounded': { params:{ radius:'24px' } },
     'mask': { params:{ shape:'circle', size:60, cx:50, cy:50, angle:0, invert:false } },
+    'adjust': { params:{ brightness:0, contrast:0, saturation:0, temperature:0, tint:0, sharpen:0, highlights:0, shadows:0, fade:0, vignette:0, grain:0 } },
     'filter': { params:{ value:'none' } },
     'css': { params:{ style:'' } },
   };
@@ -2667,6 +2733,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     'chroma-key': 'Chroma key (green screen)',
     'rounded': 'Rounded corners',
     'mask': 'Mask (蒙版)',
+    'adjust': 'Adjust (调节)',
     'filter': 'Custom filter',
     'css': 'Custom CSS',
   };
@@ -2751,7 +2818,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     title.textContent = t('Effects');
     box.appendChild(title);
     (clip.effects || []).forEach(function(fx){
-      if (fx.type === 'mask') return; // edited by the dedicated mask section
+      if (fx.type === 'mask' || fx.type === 'adjust') return; // edited by the dedicated sections
       var head = document.createElement('div');
       head.className = 'transition-row';
       head.innerHTML = '<b>' + escapeHtml(effectLabel(fx.type)) + '</b><small style="margin-left:6px;opacity:.6">' + escapeHtml(fx.type) + '</small>';
@@ -2803,7 +2870,9 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
           });
           edit([{ op:'clip.set', clipId:clip.id, props:{ effects:nextEffects } }]).catch(function(){});
         };
-        row.appendChild(label); row.appendChild(value); row.appendChild(del);
+        row.appendChild(label);
+        row.appendChild(isColorParam(name) ? colorParamControl(value, commit) : value);
+        row.appendChild(del);
         box.appendChild(row);
       });
     });
@@ -2816,6 +2885,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     empty.textContent = 'Choose…';
     add.appendChild(empty);
     Object.keys(EFFECT_CATALOG).forEach(function(type){
+      if (type === 'adjust') return; // owned by the Adjust panel
       var option = document.createElement('option');
       option.value = type;
       option.textContent = effectLabel(type);
@@ -2828,6 +2898,440 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     });
     addWrap.appendChild(add);
     box.appendChild(addWrap);
+  }
+
+  // ---------- colour params (swatch + eyedropper) ----------
+
+  function isColorParam(name){
+    return /colou?r|^key$/i.test(name);
+  }
+  function normalizeHexColor(value){
+    var text = String(value || '').trim();
+    var full = /^#?([0-9a-f]{6})$/i.exec(text);
+    if (full) return '#' + full[1].toLowerCase();
+    var short = /^#?([0-9a-f]{3})$/i.exec(text);
+    if (short) return '#' + short[1].split('').map(function(ch){ return ch + ch; }).join('').toLowerCase();
+    return null;
+  }
+  function colorParamControl(textInput, commit){
+    // Colour params keep their free-form text field (rgba()/names stay
+    // legal) and gain a native swatch plus a screen eyedropper — the
+    // EyeDropper API samples the rendered stage, so chroma-key colours can
+    // be picked straight off the footage.
+    var wrap = document.createElement('div');
+    wrap.className = 'color-param';
+    var swatch = document.createElement('input');
+    swatch.type = 'color';
+    swatch.value = normalizeHexColor(textInput.value) || '#000000';
+    swatch.title = t('Pick a colour');
+    swatch.addEventListener('input', function(){ textInput.value = swatch.value; });
+    swatch.addEventListener('change', function(){ textInput.value = swatch.value; commit(); });
+    textInput.addEventListener('input', function(){
+      var hex = normalizeHexColor(textInput.value);
+      if (hex) swatch.value = hex;
+    });
+    wrap.appendChild(swatch);
+    wrap.appendChild(textInput);
+    if (window.EyeDropper){
+      var pick = document.createElement('button');
+      pick.textContent = '⌖';
+      pick.title = t('Eyedropper — sample a colour anywhere on screen (stage included)');
+      pick.onclick = function(){
+        new window.EyeDropper().open().then(function(result){
+          textInput.value = result.sRGBHex;
+          swatch.value = result.sRGBHex;
+          commit();
+        }).catch(function(){});
+      };
+      wrap.appendChild(pick);
+    }
+    return wrap;
+  }
+
+  // ---------- adjust panel (调节) ----------
+
+  var ADJUST_PARAMS = ['brightness', 'contrast', 'saturation', 'temperature', 'tint', 'sharpen', 'highlights', 'shadows', 'fade', 'vignette', 'grain'];
+  var ADJUST_LABELS = {
+    brightness: 'Brightness', contrast: 'Contrast', saturation: 'Saturation', temperature: 'Temperature', tint: 'Tint',
+    sharpen: 'Sharpen', highlights: 'Highlights', shadows: 'Shadows', fade: 'Fade', vignette: 'Vignette', grain: 'Grain',
+  };
+  var ADJUST_ONE_SIDED = { sharpen: true, fade: true, vignette: true, grain: true };
+  var ADJUST_LOOKS = [
+    { id: 'clarity', label: 'Clarity', params: { contrast: 12, sharpen: 35, saturation: 6 } },
+    { id: 'warm', label: 'Warm', params: { temperature: 35, brightness: 4, saturation: 8 } },
+    { id: 'cool', label: 'Cool', params: { temperature: -35, contrast: 6, saturation: -4 } },
+    { id: 'vintage', label: 'Vintage', params: { fade: 40, saturation: -25, temperature: 18, grain: 30, vignette: 30, contrast: -8 } },
+    { id: 'cinematic', label: 'Cinematic', params: { contrast: 18, saturation: -12, shadows: -15, highlights: -10, vignette: 35, temperature: -8, tint: 6 } },
+    { id: 'mono', label: 'B&W', params: { saturation: -100, contrast: 15, grain: 12 } },
+    { id: 'vivid', label: 'Vivid', params: { saturation: 40, contrast: 10, sharpen: 15 } },
+  ];
+  function adjustEffectOf(clip){
+    return (clip.effects || []).filter(function(fx){ return fx.type === 'adjust'; })[0] || null;
+  }
+  function adjustParamsOf(clip){
+    var fx = adjustEffectOf(clip);
+    var out = {};
+    ADJUST_PARAMS.forEach(function(name){
+      var raw = fx && fx.params ? Number(fx.params[name]) : 0;
+      out[name] = isFinite(raw) ? raw : 0;
+    });
+    return out;
+  }
+  function adjustIsNeutral(params){
+    return ADJUST_PARAMS.every(function(name){ return !params[name]; });
+  }
+  function adjustEffectsWith(clip, params){
+    // Next effects array: the adjust effect updated in place or appended,
+    // and dropped entirely when every slider sits at 0 so documents never
+    // carry silent no-op effects.
+    var existing = adjustEffectOf(clip);
+    var effects = clip.effects || [];
+    if (adjustIsNeutral(params)) return effects.filter(function(fx){ return fx.type !== 'adjust'; });
+    var cleaned = {};
+    ADJUST_PARAMS.forEach(function(name){ if (params[name]) cleaned[name] = params[name]; });
+    if (existing){
+      var updated = Object.assign({}, existing, { params: cleaned, enabled: true });
+      return effects.map(function(fx){ return fx.id === existing.id ? updated : fx; });
+    }
+    return effects.concat([{
+      id: 'fx-adjust-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36),
+      type: 'adjust',
+      params: cleaned,
+      enabled: true,
+    }]);
+  }
+  function commitAdjust(clip, params, message){
+    return edit([{ op:'clip.set', clipId:clip.id, props:{ effects: adjustEffectsWith(clip, params) } }])
+      .then(function(){ if (message) toast(message); })
+      .catch(function(){});
+  }
+  function previewAdjust(clip, params){
+    // Live drag preview through the stage runtime's own evaluate path: the
+    // patched clip renders exactly as the committed edit will (SVG filter
+    // chain, overlays and all); the reload after save discards the patch.
+    if (!state.frameReady) return;
+    var win = stage.contentWindow;
+    if (!win || !win.__vhtml || typeof win.__vhtml.previewClip !== 'function') return;
+    win.__vhtml.previewClip(clip.id, { effects: adjustEffectsWith(clip, params) }).catch(function(){});
+  }
+  function matchingLook(params){
+    for (var i = 0; i < ADJUST_LOOKS.length; i++){
+      var look = ADJUST_LOOKS[i];
+      var same = ADJUST_PARAMS.every(function(name){ return (look.params[name] || 0) === (params[name] || 0); });
+      if (same) return look.id;
+    }
+    return null;
+  }
+  function renderAdjustSection(box, clip){
+    var params = adjustParamsOf(clip);
+    var title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = t('Adjust · colour & tone (调节)');
+    box.appendChild(title);
+    var looks = document.createElement('div');
+    looks.className = 'look-row';
+    var activeLook = matchingLook(params);
+    var original = document.createElement('button');
+    original.textContent = t('Original');
+    original.title = t('Reset every adjustment to 0');
+    if (adjustIsNeutral(params)) original.className = 'active';
+    original.onclick = function(){ commitAdjust(clip, {}, t('Adjustments reset')); };
+    looks.appendChild(original);
+    ADJUST_LOOKS.forEach(function(look){
+      var chip = document.createElement('button');
+      chip.textContent = t(look.label);
+      chip.title = t('Apply the ') + t(look.label) + t(' look (one-click filter preset)');
+      if (activeLook === look.id) chip.className = 'active';
+      chip.onclick = function(){ commitAdjust(clip, look.params, t('Look applied: ') + t(look.label)); };
+      looks.appendChild(chip);
+    });
+    box.appendChild(looks);
+    var live = Object.assign({}, params);
+    ADJUST_PARAMS.forEach(function(name){
+      var row = document.createElement('div');
+      row.className = 'adjust-row';
+      var label = document.createElement('label');
+      label.textContent = t(ADJUST_LABELS[name]);
+      label.title = t('Double-click to reset');
+      if (params[name]) label.className = 'touched';
+      var slider = document.createElement('input');
+      slider.type = 'range';
+      slider.min = ADJUST_ONE_SIDED[name] ? '0' : '-100';
+      slider.max = '100';
+      slider.step = '1';
+      slider.value = String(params[name]);
+      var out = document.createElement('output');
+      out.textContent = String(params[name]);
+      slider.addEventListener('input', function(){
+        live[name] = parseInt(slider.value, 10) || 0;
+        out.textContent = String(live[name]);
+        previewAdjust(clip, live);
+      });
+      slider.addEventListener('change', function(){
+        live[name] = parseInt(slider.value, 10) || 0;
+        commitAdjust(clip, live);
+      });
+      label.ondblclick = function(){
+        live[name] = 0;
+        slider.value = '0';
+        out.textContent = '0';
+        commitAdjust(clip, live);
+      };
+      row.appendChild(label);
+      row.appendChild(slider);
+      row.appendChild(out);
+      box.appendChild(row);
+    });
+    var hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.textContent = t('Sliders preview live on the stage and save on release; export renders the same filter chain.');
+    box.appendChild(hint);
+  }
+
+  // ---------- text style (文本样式 / 花字) ----------
+
+  // Typography keys a text preset owns; layout keys (left/right/top/bottom/
+  // width/text-align) belong to the user and survive preset changes.
+  var TEXT_STYLE_KEYS = ['font-family', 'font-size', 'font-weight', 'font-style', 'color', '-webkit-text-stroke', 'paint-order',
+    'text-shadow', 'background', 'background-color', 'padding', 'border-radius', 'letter-spacing', 'line-height', 'opacity',
+    '-webkit-background-clip', 'background-clip', '-webkit-text-fill-color'];
+  var TEXT_PRESETS = [
+    { id: 'classic', label: 'Classic white', style: { 'font-size': '48px', 'font-weight': '700', 'color': '#ffffff', 'text-shadow': '0 2px 8px rgba(0,0,0,.65)' } },
+    { id: 'outline', label: 'Bold outline', style: { 'font-size': '56px', 'font-weight': '900', 'color': '#ffd54a', '-webkit-text-stroke': '3px #000000', 'paint-order': 'stroke fill' } },
+    { id: 'neon', label: 'Neon', style: { 'font-size': '52px', 'font-weight': '700', 'color': '#6ee7ff', 'text-shadow': '0 0 10px #6ee7ff, 0 0 28px #6ee7ff' } },
+    { id: 'boxed', label: 'Boxed', style: { 'font-size': '44px', 'font-weight': '600', 'color': '#ffffff', 'background': 'rgba(0,0,0,.78)', 'padding': '8px 18px', 'border-radius': '6px' } },
+    { id: 'gradient', label: 'Gradient', style: { 'font-size': '72px', 'font-weight': '900', 'background': 'linear-gradient(90deg,#ffd54a,#ff5c8a)', '-webkit-background-clip': 'text', 'background-clip': 'text', 'color': 'transparent', '-webkit-text-fill-color': 'transparent' } },
+    { id: 'variety', label: 'Variety', style: { 'font-size': '64px', 'font-weight': '900', 'color': '#ffffff', '-webkit-text-stroke': '4px #ff3cd2', 'paint-order': 'stroke fill', 'text-shadow': '4px 4px 0 #1a0a2e', 'letter-spacing': '.04em' } },
+  ];
+  var TEXT_SHADOW_KINDS = ['none', 'soft', 'hard', 'glow', 'block'];
+  var TEXT_SHADOW_LABELS = { none: 'No shadow', soft: 'Soft shadow', hard: 'Hard shadow', glow: 'Glow', block: '3D block' };
+  var TEXT_SHADOW_TEMPLATES = {
+    soft: '0 2px 8px {c}',
+    hard: '2px 2px 0 {c}',
+    glow: '0 0 10px {c}, 0 0 28px {c}',
+    block: '1px 1px 0 {c}, 2px 2px 0 {c}, 3px 3px 0 {c}, 4px 4px 0 {c}',
+  };
+  var FONT_SUGGESTIONS = ['system-ui', '"Segoe UI"', '"Noto Sans SC"', '"Microsoft YaHei"', '"PingFang SC"', '"Source Han Sans SC"', '"Noto Serif SC"', 'serif', 'monospace'];
+
+  function cueStyleOf(clip){
+    return Object.assign({}, clip.style || {});
+  }
+  function setCueStyle(clip, patch){
+    var next = cueStyleOf(clip);
+    Object.keys(patch).forEach(function(key){
+      var value = patch[key];
+      if (value === null || value === undefined || value === '') delete next[key];
+      else next[key] = String(value);
+    });
+    return edit([{ op:'clip.set', clipId:clip.id, props:{ style:next } }]).catch(function(){});
+  }
+  function applyTextPreset(clip, preset){
+    var next = cueStyleOf(clip);
+    TEXT_STYLE_KEYS.forEach(function(key){ delete next[key]; });
+    Object.keys(preset.style).forEach(function(key){ next[key] = preset.style[key]; });
+    return edit([{ op:'clip.set', clipId:clip.id, props:{ style:next } }])
+      .then(function(){ toast(t('Text style applied: ') + t(preset.label)); })
+      .catch(function(){});
+  }
+  function pxNumber(value, fallback){
+    var match = /^(-?\d+(?:\.\d+)?)px$/.exec(String(value || '').trim());
+    return match ? parseFloat(match[1]) : fallback;
+  }
+  function parseTextStroke(value){
+    var match = /^(\d+(?:\.\d+)?)px\s+(.+)$/.exec(String(value || '').trim());
+    return match ? { width: parseFloat(match[1]), color: match[2] } : { width: 0, color: '#000000' };
+  }
+  function shadowKindOf(value){
+    if (!value) return 'none';
+    var text = String(value).trim();
+    var parts = text.split(',');
+    if (parts.length >= 3) return 'block';
+    if (text.indexOf('0 0 ') === 0) return 'glow';
+    var tokens = parts[0].trim().split(/\s+/);
+    return tokens.length >= 3 && tokens[2] === '0' ? 'hard' : 'soft';
+  }
+  function shadowColorOf(value, fallback){
+    var match = /(#[0-9a-f]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\))/i.exec(String(value || ''));
+    return match ? match[1] : fallback;
+  }
+  function buildTextShadow(kind, color){
+    var template = TEXT_SHADOW_TEMPLATES[kind];
+    return template ? template.split('{c}').join(color) : '';
+  }
+  function colorRow(container, current, onCommit){
+    // Swatch + free-form text (rgba()/gradients stay legal) + eyedropper.
+    var row = document.createElement('div');
+    row.className = 'row';
+    var text = document.createElement('input');
+    text.type = 'text';
+    text.value = current || '';
+    var commit = function(){ onCommit(text.value.trim()); };
+    text.addEventListener('change', commit);
+    row.appendChild(colorParamControl(text, commit));
+    container.appendChild(row);
+    return text;
+  }
+  function renderTextStyleSection(box, clip){
+    var style = cueStyleOf(clip);
+    var title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = t('Text style (文本样式)');
+    box.appendChild(title);
+    var presets = document.createElement('div');
+    presets.className = 'look-row';
+    TEXT_PRESETS.forEach(function(preset){
+      var chip = document.createElement('button');
+      chip.textContent = t(preset.label);
+      chip.title = t('Apply this text look; position and alignment are kept');
+      chip.onclick = function(){ applyTextPreset(clip, preset); };
+      presets.appendChild(chip);
+    });
+    box.appendChild(presets);
+
+    var grid = document.createElement('div');
+    grid.className = 'text-style-grid';
+    function cell(labelText, full){
+      var wrap = document.createElement('div');
+      wrap.className = 'field' + (full ? ' full' : '');
+      wrap.innerHTML = '<label>' + escapeHtml(labelText) + '</label>';
+      grid.appendChild(wrap);
+      return wrap;
+    }
+
+    var fontCell = cell(t('Font family'), true);
+    var fontRow = document.createElement('div');
+    fontRow.className = 'row';
+    var font = document.createElement('input');
+    font.type = 'text';
+    font.setAttribute('list', 'text-font-list');
+    font.placeholder = t('inherit (project CSS)');
+    font.value = style['font-family'] || '';
+    font.addEventListener('change', function(){ setCueStyle(clip, { 'font-family': font.value.trim() }); });
+    var list = document.createElement('datalist');
+    list.id = 'text-font-list';
+    var families = FONT_SUGGESTIONS.slice();
+    (state.assets || []).forEach(function(asset){ if (asset.kind === 'font' && families.indexOf(asset.id) < 0) families.push(asset.id); });
+    families.forEach(function(family){
+      var option = document.createElement('option');
+      option.value = family;
+      list.appendChild(option);
+    });
+    fontRow.appendChild(font);
+    fontRow.appendChild(list);
+    var bold = document.createElement('button');
+    bold.textContent = 'B';
+    bold.title = t('Bold');
+    bold.style.fontWeight = '900';
+    var weight = parseInt(style['font-weight'], 10);
+    var isBold = style['font-weight'] === 'bold' || (isFinite(weight) && weight >= 600);
+    if (isBold) bold.className = 'on';
+    bold.onclick = function(){ setCueStyle(clip, { 'font-weight': isBold ? '400' : '700' }); };
+    var italic = document.createElement('button');
+    italic.textContent = 'I';
+    italic.title = t('Italic');
+    italic.style.fontStyle = 'italic';
+    if (style['font-style'] === 'italic') italic.className = 'on';
+    italic.onclick = function(){ setCueStyle(clip, { 'font-style': style['font-style'] === 'italic' ? null : 'italic' }); };
+    fontRow.appendChild(bold);
+    fontRow.appendChild(italic);
+    fontCell.appendChild(fontRow);
+
+    var sizeCell = cell(t('Size (px)'));
+    sizeCell.appendChild(numberInput(pxNumber(style['font-size'], 42), 1, function(value){
+      var size = parseFloat(value);
+      setCueStyle(clip, { 'font-size': isFinite(size) && size > 0 ? size + 'px' : null });
+    }));
+    var colorCell = cell(t('Text colour'));
+    colorRow(colorCell, style.color || '#ffffff', function(value){ setCueStyle(clip, { color: value || null }); });
+
+    var stroke = parseTextStroke(style['-webkit-text-stroke']);
+    var strokeCell = cell(t('Stroke width (px)'));
+    strokeCell.appendChild(numberInput(stroke.width, 0.5, function(value){
+      var width = parseFloat(value);
+      setCueStyle(clip, width > 0
+        ? { '-webkit-text-stroke': width + 'px ' + stroke.color, 'paint-order': 'stroke fill' }
+        : { '-webkit-text-stroke': null, 'paint-order': null });
+    }));
+    var strokeColorCell = cell(t('Stroke colour'));
+    colorRow(strokeColorCell, stroke.color, function(value){
+      if (!(stroke.width > 0)) return toast(t('Set a stroke width first'), true);
+      setCueStyle(clip, { '-webkit-text-stroke': stroke.width + 'px ' + (value || '#000000'), 'paint-order': 'stroke fill' });
+    });
+
+    var shadowKind = shadowKindOf(style['text-shadow']);
+    var shadowColor = shadowColorOf(style['text-shadow'], shadowKind === 'glow' ? (style.color || '#6ee7ff') : 'rgba(0,0,0,.65)');
+    var shadowCell = cell(t('Shadow'));
+    var shadowSel = document.createElement('select');
+    TEXT_SHADOW_KINDS.forEach(function(kind){
+      var option = document.createElement('option');
+      option.value = kind;
+      option.textContent = t(TEXT_SHADOW_LABELS[kind]);
+      option.selected = kind === shadowKind;
+      shadowSel.appendChild(option);
+    });
+    shadowSel.addEventListener('change', function(){
+      setCueStyle(clip, { 'text-shadow': shadowSel.value === 'none' ? null : buildTextShadow(shadowSel.value, shadowColor) });
+    });
+    shadowCell.appendChild(shadowSel);
+    var shadowColorCell = cell(t('Shadow colour'));
+    colorRow(shadowColorCell, shadowColor, function(value){
+      if (shadowKind === 'none') return toast(t('Pick a shadow style first'), true);
+      setCueStyle(clip, { 'text-shadow': buildTextShadow(shadowKind, value || 'rgba(0,0,0,.65)') });
+    });
+
+    var bgCell = cell(t('Background'));
+    colorRow(bgCell, style.background || style['background-color'] || '', function(value){
+      setCueStyle(clip, value
+        ? { background: value, padding: style.padding || '8px 18px', 'border-radius': style['border-radius'] || '6px' }
+        : { background: null, 'background-color': null, padding: null, 'border-radius': null });
+    });
+    var radiusCell = cell(t('Corner radius (px)'));
+    radiusCell.appendChild(numberInput(pxNumber(style['border-radius'], 0), 1, function(value){
+      var radius = parseFloat(value);
+      setCueStyle(clip, { 'border-radius': isFinite(radius) && radius > 0 ? radius + 'px' : null });
+    }));
+
+    var spacingCell = cell(t('Letter spacing (px)'));
+    spacingCell.appendChild(numberInput(pxNumber(style['letter-spacing'], 0), 0.5, function(value){
+      var spacing = parseFloat(value);
+      setCueStyle(clip, { 'letter-spacing': isFinite(spacing) && spacing !== 0 ? spacing + 'px' : null });
+    }));
+    var lineCell = cell(t('Line height'));
+    lineCell.appendChild(numberInput(parseFloat(style['line-height']) || 1.28, 0.05, function(value){
+      var height = parseFloat(value);
+      setCueStyle(clip, { 'line-height': isFinite(height) && height > 0 ? String(height) : null });
+    }));
+
+    var alignCell = cell(t('Align'));
+    var alignRow = document.createElement('div');
+    alignRow.className = 'row';
+    [['left', '⇤'], ['center', '↔'], ['right', '⇥']].forEach(function(pair){
+      var button = document.createElement('button');
+      button.textContent = pair[1];
+      button.title = t('Align ' + pair[0]);
+      if ((style['text-align'] || 'center') === pair[0]) button.className = 'on';
+      button.onclick = function(){ setCueStyle(clip, { 'text-align': pair[0] === 'center' ? null : pair[0] }); };
+      alignRow.appendChild(button);
+    });
+    alignCell.appendChild(alignRow);
+    var bottomCell = cell(t('Bottom offset (%)'));
+    bottomCell.appendChild(numberInput(parseFloat(style.bottom) || 8, 1, function(value){
+      var bottom = parseFloat(value);
+      setCueStyle(clip, { bottom: isFinite(bottom) ? bottom + '%' : null, top: null });
+    }));
+
+    var opacityCell = cell(t('Opacity'));
+    opacityCell.appendChild(numberInput(style.opacity !== undefined ? parseFloat(style.opacity) : 1, 0.05, function(value){
+      var opacity = parseFloat(value);
+      setCueStyle(clip, { opacity: isFinite(opacity) && opacity < 1 ? String(Math.max(0, opacity)) : null });
+    }));
+    box.appendChild(grid);
+
+    var clear = document.createElement('button');
+    clear.textContent = t('Clear text style (lane defaults)');
+    clear.title = t('Remove every per-cue style so the caption lane style applies');
+    clear.onclick = function(){ edit([{ op:'clip.set', clipId:clip.id, props:{ style:{} } }]).then(function(){ toast(t('Text style cleared')); }).catch(function(){}); };
+    box.appendChild(clear);
   }
 
   function sceneById(sceneId){
@@ -3362,6 +3866,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     var visualGrid = document.createElement('div');
     visualGrid.className = 'lib-grid';
     Object.keys(EFFECT_CATALOG).forEach(function(type){
+      if (type === 'adjust') return; // sliders live in Properties → Adjust
       visualGrid.appendChild(makeLibraryChip('effect', type, effectLabel(type)));
     });
     box.appendChild(visualGrid);
@@ -4060,6 +4565,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         toast(t('Attributes copied — select clip(s) and paste'));
       }, selected.length !== 1);
       ctxItem(menu, t('Paste attributes'), '', function(){ pasteAttributesTo(selected); }, !state.attributeClipboard || locked);
+      ctxItem(menu, t('Paste keyframes'), '', function(){ pasteKeyframesTo(selected); }, !(state.attributeClipboard && (state.attributeClipboard.animations || []).length) || locked);
       if (selected.length >= 2){
         ctxItem(menu, t('Link clips'), '', function(){
           edit([{ op:'clip.link', clipIds:selected }]).then(function(){ toast(t('Clips linked — they move together')); }).catch(function(){});
@@ -4107,6 +4613,11 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         if (clip.kind === 'video'){
           ctxItem(menu, t('Detach audio'), '', function(){ edit([{ op:'clip.detachAudio', clipId:clip.id }]).then(function(){ toast(t('Audio detached to its own lane')); }).catch(function(){}); }, selected.length !== 1 || locked);
         }
+        ctxSep(menu);
+        ctxTitle(menu, t('Auto beat (自动踩点)'));
+        ctxItem(menu, t('Beat markers I — strong beats'), '', function(){ addBeatMarkers(clip, 'strong'); }, selected.length !== 1);
+        ctxItem(menu, t('Beat markers II — every beat'), '', function(){ addBeatMarkers(clip, 'all'); }, selected.length !== 1);
+        ctxItem(menu, t('Clear beat markers'), '', clearBeatMarkers);
       }
       ctxSep(menu);
       ctxItem(menu, clip.enabled === false ? 'Enable clip' : 'Disable clip', '', function(){ toggleClipEnabled(selected); }, locked);
@@ -4190,7 +4701,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         if (name === null) return;
         edit([
           { op:'marker.remove', timelineId:markerTimelineId(), markerId:target.marker.id },
-          { op:'marker.add', timelineId:markerTimelineId(), marker:{ id:target.marker.id, time:target.marker.time, name:name, type:target.marker.type } },
+          { op:'marker.add', timelineId:markerTimelineId(), marker:{ id:target.marker.id, time:target.marker.time, name:name, type:target.marker.type, color:target.marker.color, metadata:target.marker.metadata } },
         ]).catch(function(){});
       });
       ctxItem(menu, t('Delete marker'), '', function(){
@@ -4206,7 +4717,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
           if (name === null) return;
           edit([
             { op:'marker.remove', timelineId:markerTimelineId(), markerId:marker.id },
-            { op:'marker.add', timelineId:markerTimelineId(), marker:{ id:marker.id, time:marker.time, name:name, type:marker.type } },
+            { op:'marker.add', timelineId:markerTimelineId(), marker:{ id:marker.id, time:marker.time, name:name, type:marker.type, color:marker.color, metadata:marker.metadata } },
           ]).catch(function(){});
         });
         ctxItem(menu, t('Delete marker'), '', function(){ edit([{ op:'marker.remove', timelineId:markerTimelineId(), markerId:marker.id }]).catch(function(){}); });
@@ -4393,6 +4904,53 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     var id = 'marker-' + Date.now().toString(36);
     edit([{ op:'marker.add', timelineId:markerTimelineId(), marker:{ id:id, time:time, name:'Marker', type:'marker' } }])
       .then(function(){ toast('Marker at ' + fmtTime(time)); }).catch(function(){});
+  }
+
+  // ---------- auto beat detection (自动踩点) ----------
+
+  function clipAssetIdOf(clip){
+    if (!clip || !clip.ref) return null;
+    var asset = assetById(clip.ref) || assetById(clip.ref.replace(/^(asset|gen):/, ''));
+    return asset ? asset.id : null;
+  }
+  function addBeatMarkers(clip, kind){
+    var assetId = clipAssetIdOf(clip);
+    if (!assetId) return toast(t('Clip has no linked audio asset'), true);
+    var speed = Number(clip.speed) || 1;
+    var sourceIn = Number(clip.sourceIn) || 0;
+    var stamp = Date.now().toString(36);
+    api('/api/media/beats?asset=' + encodeURIComponent(assetId))
+      .then(function(body){
+        if (!body.ok) return toast(body.error || t('Beat detection failed'), true);
+        var source = kind === 'strong' ? (body.strong || []) : (body.beats || []);
+        var times = source.filter(function(time){
+          return time >= sourceIn && time < sourceIn + clip.duration * speed;
+        }).map(function(time){ return snap(clip.start + (time - sourceIn) / speed); });
+        if (!times.length) return toast(t('No beats inside this clip'), true);
+        var label = kind === 'strong' ? 'I' : 'II';
+        var ops = times.map(function(time, index){
+          return { op:'marker.add', timelineId:markerTimelineId(), marker:{
+            id: 'beat-' + stamp + '-' + index,
+            time: time,
+            name: '♪ ' + label + (body.bpm ? ' · ' + body.bpm + ' BPM' : ''),
+            type: 'marker',
+            color: kind === 'strong' ? '#ff5c8a' : '#ff9a3c',
+            metadata: { beat: kind, clipId: clip.id },
+          } };
+        });
+        return edit(ops).then(function(){
+          toast(t('Beat markers added: ') + times.length + (body.bpm ? ' · ' + body.bpm + ' BPM' : ''));
+        });
+      })
+      .catch(function(error){ toast(error.message || t('Beat detection failed'), true); });
+  }
+  function clearBeatMarkers(){
+    var beatMarkers = timelineMarkers().filter(function(marker){ return marker.metadata && marker.metadata.beat; });
+    if (!beatMarkers.length) return toast(t('No beat markers to clear'), true);
+    var ops = beatMarkers.map(function(marker){
+      return { op:'marker.remove', timelineId:markerTimelineId(), markerId:marker.id };
+    });
+    edit(ops).then(function(){ toast(t('Cleared ') + ops.length + t(' beat marker(s)')); }).catch(function(){});
   }
 
   function addLane(type, atOrder){

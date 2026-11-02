@@ -289,6 +289,7 @@ VHTML 1.1 不承诺：
 | `tint` / `color-overlay` | `color/opacity/blend` | 颜色叠加 |
 | `rounded` | `radius` | 圆角 |
 | `mask` | `shape/inset/points/value/feather` | `clip-path` 遮罩；`feather` >0 时改用渐变 `mask-image` 羽化边缘（圆形任意角度；椭圆/矩形需未旋转），硬边回退为 `points` 多边形 |
+| `adjust` | `brightness/contrast/saturation/temperature/tint/sharpen/highlights/shadows/fade/vignette/grain` | NLE 调节面板，全部参数为 −100..100 滑杆（0 = 不变）。亮度/对比度/饱和度走 CSS filter 倍率（±50%、±50%、0..2×）；色温/色调走 `feColorMatrix` 对角矩阵，高光/阴影/褪色走 `feComponentTransfer` 色调曲线表，锐化走 `feConvolveMatrix` 非锐化卷积，四者合成一条自包含 SVG data-URI filter；`vignette/grain` 复用暗角/颗粒叠加层。参考实现要求 `color-interpolation-filters="sRGB"` |
 | `chroma-key` | `color/tolerance/spill` | 媒体色键（参考实现用 Canvas） |
 | `filter` | `value` | 原始 CSS filter 片段 |
 | `css` | `style/value` | 受控自定义 CSS 片段 |

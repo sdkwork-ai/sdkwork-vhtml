@@ -471,6 +471,106 @@ function effectiveEffect(
   };
 }
 
+export interface AdjustValues {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  temperature: number;
+  tint: number;
+  sharpen: number;
+  highlights: number;
+  shadows: number;
+  fade: number;
+  vignette: number;
+  grain: number;
+}
+
+const ADJUST_TONE_STEPS = 16;
+
+/**
+ * Tone curve behind `highlights` / `shadows` / `fade` (unit range in, unit
+ * range out). Shadows weight x·(1−x)² (peaks at ⅓), highlights x²·(1−x)
+ * (peaks at ⅔); fade lifts the black point towards 0.25 like a matte look.
+ */
+export function adjustToneCurve(x: number, highlights: number, shadows: number, fade: number): number {
+  const lifted = x + shadows * 1.2 * x * (1 - x) * (1 - x) + highlights * 1.2 * x * x * (1 - x);
+  const matte = fade * 0.25;
+  return clamp(matte + lifted * (1 - matte), 0, 1);
+}
+
+/**
+ * One self-contained SVG filter carrying the colour matrix (temperature/
+ * tint), the tone table (highlights/shadows/fade) and the unsharp kernel
+ * (sharpen). Returned as a CSS `url("data:…#a")` so the preview stage, the
+ * Studio WYSIWYG view and the sampled frames share the exact primitive chain.
+ */
+export function adjustFilterUrl(values: AdjustValues): string | undefined {
+  const round = (value: number): string => String(Math.round(value * 10_000) / 10_000);
+  const primitives: string[] = [];
+  if (values.temperature !== 0 || values.tint !== 0) {
+    const r = (1 + 0.15 * values.temperature) * (1 + 0.08 * values.tint);
+    const g = (1 + 0.05 * values.temperature) * (1 - 0.12 * values.tint);
+    const b = (1 - 0.15 * values.temperature) * (1 + 0.08 * values.tint);
+    primitives.push(
+      `<feColorMatrix type='matrix' values='${round(r)} 0 0 0 0 0 ${round(g)} 0 0 0 0 0 ${round(b)} 0 0 0 0 0 1 0'/>`,
+    );
+  }
+  if (values.highlights !== 0 || values.shadows !== 0 || values.fade !== 0) {
+    const table: string[] = [];
+    for (let step = 0; step <= ADJUST_TONE_STEPS; step++) {
+      table.push(round(adjustToneCurve(step / ADJUST_TONE_STEPS, values.highlights, values.shadows, values.fade)));
+    }
+    const func = table.join(' ');
+    primitives.push(
+      `<feComponentTransfer><feFuncR type='table' tableValues='${func}'/><feFuncG type='table' tableValues='${func}'/><feFuncB type='table' tableValues='${func}'/></feComponentTransfer>`,
+    );
+  }
+  if (values.sharpen > 0) {
+    const k = values.sharpen * 0.6;
+    primitives.push(
+      `<feConvolveMatrix order='3' kernelMatrix='0 ${round(-k)} 0 ${round(-k)} ${round(1 + 4 * k)} ${round(-k)} 0 ${round(-k)} 0' preserveAlpha='true'/>`,
+    );
+  }
+  if (!primitives.length) return undefined;
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg'><filter id='a' color-interpolation-filters='sRGB'>${primitives.join('')}</filter></svg>`;
+  const encoded = svg.replace(/%/g, '%25').replace(/</g, '%3C').replace(/>/g, '%3E').replace(/#/g, '%23').replace(/ /g, '%20').replace(/"/g, '%22');
+  return `url("data:image/svg+xml;utf8,${encoded}#a")`;
+}
+
+/** Read an `adjust` effect's sliders as unit values (−1..1, one-sided ones 0..1). */
+export function adjustValues(effect: Effect): AdjustValues {
+  const unit = (name: string, min: number): number => clamp(effectNumber(effect, [name], 0), min, 100) / 100;
+  return {
+    brightness: unit('brightness', -100),
+    contrast: unit('contrast', -100),
+    saturation: unit('saturation', -100),
+    temperature: unit('temperature', -100),
+    tint: unit('tint', -100),
+    sharpen: unit('sharpen', 0),
+    highlights: unit('highlights', -100),
+    shadows: unit('shadows', -100),
+    fade: unit('fade', 0),
+    vignette: unit('vignette', 0),
+    grain: unit('grain', 0),
+  };
+}
+
+function grainOverlay(opacity: number, size: number): EffectOverlay {
+  return {
+    background: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='${size * 20}' height='${size * 20}'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E")`,
+    opacity,
+    blendMode: 'overlay',
+  };
+}
+
+function vignetteOverlay(amount: number): EffectOverlay {
+  return {
+    background: `radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,${clamp(amount, 0, 1)}) 100%)`,
+    opacity: 1,
+    blendMode: 'normal',
+  };
+}
+
 function collectEffects(
   clip: Clip,
   layer: LayerAccumulator,
@@ -532,22 +632,26 @@ function collectEffects(
         );
         break;
       case 'grain': {
-        const opacity = effectNumber(effect, ['opacity', 'amount'], 0.12);
-        const size = effectNumber(effect, ['size'], 3);
-        overlays.push({
-          background: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='${size * 20}' height='${size * 20}'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/%3E%3C/svg%3E")`,
-          opacity,
-          blendMode: 'overlay',
-        });
+        overlays.push(grainOverlay(effectNumber(effect, ['opacity', 'amount'], 0.12), effectNumber(effect, ['size'], 3)));
         break;
       }
       case 'vignette': {
-        const amount = effectNumber(effect, ['amount'], 0.5);
-        overlays.push({
-          background: `radial-gradient(ellipse at center, rgba(0,0,0,0) 45%, rgba(0,0,0,${clamp(amount, 0, 1)}) 100%)`,
-          opacity: 1,
-          blendMode: 'normal',
-        });
+        overlays.push(vignetteOverlay(effectNumber(effect, ['amount'], 0.5)));
+        break;
+      }
+      case 'adjust': {
+        // NLE 调节 panel: sliders centred on 0. Brightness/contrast/saturation
+        // ride the CSS filter multipliers (±50 %, ±50 %, 0..2×); the colour
+        // matrix, tone table and unsharp kernel share one SVG filter; vignette
+        // and grain reuse the dedicated overlay generators.
+        const values = adjustValues(effect);
+        if (values.brightness !== 0) layer.brightness *= 1 + values.brightness * 0.5;
+        if (values.contrast !== 0) layer.contrast *= 1 + values.contrast * 0.5;
+        if (values.saturation !== 0) layer.saturate *= 1 + values.saturation;
+        const svgFilter = adjustFilterUrl(values);
+        if (svgFilter) layer.filterRaw.push(svgFilter);
+        if (values.vignette > 0) overlays.push(vignetteOverlay(values.vignette * 0.85));
+        if (values.grain > 0) overlays.push(grainOverlay(values.grain * 0.35, 3));
         break;
       }
       case 'tint':

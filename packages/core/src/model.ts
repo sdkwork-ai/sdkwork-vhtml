@@ -317,8 +317,19 @@ export type TransitionType =
 export const VISUAL_EFFECT_TYPES: ReadonlySet<string> = new Set([
   'blur', 'brightness', 'contrast', 'saturate', 'grayscale', 'sepia', 'invert',
   'hue-rotate', 'drop-shadow', 'glow', 'grain', 'vignette', 'tint',
-  'color-overlay', 'chroma-key', 'rounded', 'mask', 'filter', 'css',
+  'color-overlay', 'chroma-key', 'rounded', 'mask', 'adjust', 'filter', 'css',
 ]);
+
+/**
+ * Parameters of the `adjust` effect (the NLE "调节" panel). Every value is a
+ * −100..100 slider centred on 0 = no change; `sharpen`, `fade`, `vignette`
+ * and `grain` are one-sided (0..100).
+ */
+export const ADJUST_PARAMS = [
+  'brightness', 'contrast', 'saturation', 'temperature', 'tint',
+  'sharpen', 'highlights', 'shadows', 'fade', 'vignette', 'grain',
+] as const;
+export type AdjustParam = (typeof ADJUST_PARAMS)[number];
 
 /** Built-in audio effect types mixers MUST implement (single source of truth). */
 export const AUDIO_EFFECT_TYPES: ReadonlySet<string> = new Set([
