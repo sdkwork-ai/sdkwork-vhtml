@@ -513,6 +513,7 @@ function applyPreviewAudio(state: FrameState): void {
       continue;
     }
     audio.volume = Math.max(0, Math.min(1, clip.audio.gain));
+    audio.preservesPitch = clip.audio.preservesPitch;
     if (!playing) {
       audio.pause();
       if (Math.abs(audio.currentTime - clip.audio.sourceTime) > 0.02) {
@@ -521,7 +522,6 @@ function applyPreviewAudio(state: FrameState): void {
       continue;
     }
     audio.playbackRate = Math.min(4, Math.max(0.25, clip.audio.rate));
-    audio.preservesPitch = clip.audio.preservesPitch;
     if (Math.abs(audio.currentTime - clip.audio.sourceTime) > 0.35) {
       audio.currentTime = Math.max(0, clip.audio.sourceTime);
     }
