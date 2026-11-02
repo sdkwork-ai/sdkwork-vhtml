@@ -115,7 +115,9 @@ validated Core Model edit (undoable, saved atomically).
   right) or `overwrite` (replace the covered range) for drops and pastes.
   Linked clips ride together: a detached-audio pair keeps video+audio united.
 - **Context menu** (right-click a clip, lane header, ruler or transition):
-  split, duplicate, copy/cut/paste, **link/unlink** (linked clips move
+  split, **split at markers (卡点)** — one click cuts every selected clip at
+  the markers inside its range (自动踩点 markers included, the music-video
+  workflow), duplicate, copy/cut/paste, **link/unlink** (linked clips move
   together, CapCut-style AV pairs), **replace source from Assets…** (arms the
   Assets tab with per-asset ↔ buttons running `clip.replace`, timing kept),
   speed presets (0.25×–4×), speed ramps (slow–fast–slow / fast–slow–fast /
@@ -247,9 +249,12 @@ Select a clip to edit everything the model supports:
   shadow (soft/hard/glow/3D-block templates), background + corner radius,
   letter spacing, line height, alignment, bottom offset and opacity — all
   stored as the normative per-cue `style` map. **花字 presets** (Classic
-  white, Bold outline, Neon, Boxed, Gradient, Variety) restyle the typography
-  keys while keeping position and alignment; "Clear text style" falls back to
-  the lane defaults.
+white, Bold outline, Neon, Boxed, Gradient, Variety) restyle the typography
+keys while keeping position and alignment; "Clear text style" falls back to
+the lane defaults. **竖排 (vertical)** toggles `writing-mode: vertical-rl`
+for CJK vertical text, and **Credits roll (滚动字幕)** animates the cue from
+below the frame to above it across the whole clip with one Y keyframe track
+(drag the diamonds to retime).
 - **Keyframes travel with attributes**: *Copy attributes* also carries the
   animation tracks; *Paste attributes* drops them onto compatible clips
   (volume/pan only onto audible clips), and a separate *Paste keyframes*
@@ -285,7 +290,9 @@ and unused files.
 - Drag an asset onto a compatible lane, or press `+` to add at the playhead.
   Images/SVG default to 3s; video/audio use their probed duration.
 - Missing assets are outlined; the `↺` button relinks them to a file inside the
-  project root and validates before saving.
+  project root and validates before saving. **★ Favourites**: star an asset
+  (stored as asset `metadata.favorite`) and the toolbar ★ shows only the
+  favourites.
 - Audio lanes accept audio assets or the audio of a video asset; caption/data
   lanes reject media.
 - Thumbnails come from the project static server; no external upload service.
@@ -342,9 +349,13 @@ The export dialog offers:
 - range start/duration with a **Use In/Out** shortcut for the timeline range;
 - **Burn captions** into the picture, a **WebVTT sidecar**, and an
   **audit report** (`vhtml.export-report/1`);
-- optional **loudness normalization** (EBU R128 `loudnorm`, e.g. `-14` LUFS).
+- optional **loudness normalization** (EBU R128 `loudnorm`, e.g. `-14` LUFS);
+- **封面 (Cover)**: 📷 *Set cover at playhead* stores the project cover time
+  (`project.set metadata.cover-time`), and *Export cover frame* renders one
+  deterministic frame as `<stem>.cover.png` next to the video after the
+  export finishes (batch exports cover only the first file).
 
-Completed jobs link the video, captions sidecar and report.
+Completed jobs link the video, captions sidecar, report and cover.
 
 ## API
 
@@ -369,7 +380,7 @@ Completed jobs link the video, captions sidecar and report.
 | `/api/media/poster` | GET | `?asset=<id>&t=<sec>` JPEG frame thumbnail (cached) |
 | `/api/clipboard` | POST | `{ action: copy\|paste\|clear, clipIds?, start? }` REST clipboard shim |
 | `/api/snapshot` | POST | `{ time }` renders one frame to `renders/*.png` (job) |
-| `/api/export` | POST | start export job (`delivery`, `burnCaptions`, `captions`, `loudness`, `report` supported) |
+| `/api/export` | POST | start export job (`delivery`, `burnCaptions`, `captions`, `loudness`, `report`, `cover`/`coverTime` supported) |
 | `/api/job/:id` | GET | export progress/result |
 | `/__vhtml/stage.html` | GET | live stage document |
 

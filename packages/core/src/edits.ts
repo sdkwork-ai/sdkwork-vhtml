@@ -117,6 +117,8 @@ export type EditOperation =
       seed?: number;
       mainTimeline?: string;
       composition?: CompositionPatch;
+      /** Key/value metadata merge (cover-time, review gates, custom labels). */
+      metadata?: Record<string, string>;
     }
   | { op: 'asset.add'; asset: Asset; replace?: boolean }
   | { op: 'asset.remove'; assetId: string }
@@ -814,6 +816,9 @@ class Editor {
       this.project.mainTimeline = operation.mainTimeline;
     }
     if (operation.composition) this.compositionSet(operation.composition);
+    if (operation.metadata) {
+      this.project.metadata = { ...this.project.metadata, ...operation.metadata };
+    }
     this.changed.push('project');
   }
 

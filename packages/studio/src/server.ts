@@ -258,6 +258,8 @@ interface StudioModel {
   duration: number;
   background: string;
   colorSpace: string;
+  /** Project-level key/value metadata (cover-time, review gates, labels). */
+  metadata: Record<string, string>;
   scenes: Array<{ id: string; name: string; src?: string; duration: number }>;
   generations: Array<{ id: string; kind: string; status: string; provider?: string; model?: string; prompt: string }>;
   storyboard: StudioShot[];
@@ -282,6 +284,7 @@ interface Job {
   sizeBytes?: number;
   captions?: string;
   report?: string;
+  cover?: string;
   createdAt: number;
 }
 
@@ -451,6 +454,7 @@ function studioModel(project: Project, editingTimelineId?: string): StudioModel 
     duration: toNumber(timeline?.duration ?? project.composition.duration),
     background: project.composition.background,
     colorSpace: project.composition.colorSpace,
+    metadata: project.metadata ?? {},
     scenes: project.scenes.map((scene) => ({
       id: scene.id,
       name: scene.name ?? scene.id,
@@ -1497,6 +1501,9 @@ export async function startStudio(input: string | undefined, options: StudioOpti
             captions?: boolean;
             loudness?: number;
             report?: boolean;
+            /** Render one frame as `<stem>.cover.png` next to the export. */
+            cover?: boolean;
+            coverTime?: number;
           };
           const project = structuredClone(session.project);
           let output: OutputConfig;
@@ -1614,6 +1621,32 @@ export async function startStudio(input: string | undefined, options: StudioOpti
                   job.message = progress.message;
                 },
               });
+              const coverTime = typeof payload.coverTime === 'number' && isFinite(payload.coverTime)
+                ? payload.coverTime
+                : Number(project.metadata['cover-time']);
+              if (payload.cover && isFinite(coverTime) && coverTime >= 0) {
+                // 封面帧: one deterministic sample of the exported project,
+                // written next to the media file (CapCut cover semantics) —
+                // before the job reports success so the link is ready.
+                job.phase = 'cover';
+                job.percent = 99;
+                const coverRenderer = new VhtmlRenderer({
+                  project,
+                  root,
+                  timelineId: project.mainTimeline,
+                  executablePath: options.chrome ?? manifest.preview?.chrome,
+                  timeoutMs: 30_000,
+                });
+                try {
+                  const captured = await coverRenderer.sampleTime(Math.min(coverTime, toNumber(project_duration(project))));
+                  const coverRelative = path.join(layout.renders, `${fileStem}.cover.png`);
+                  fs.mkdirSync(path.dirname(path.join(root, coverRelative)), { recursive: true });
+                  fs.writeFileSync(path.join(root, coverRelative), captured.png);
+                  job.cover = '/' + coverRelative.split(path.sep).join('/');
+                } finally {
+                  void coverRenderer.close().catch(() => {});
+                }
+              }
               job.status = 'succeeded';
               job.phase = 'done';
               job.percent = 100;

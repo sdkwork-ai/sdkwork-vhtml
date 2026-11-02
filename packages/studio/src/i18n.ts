@@ -555,6 +555,35 @@ const zh: Record<string, string> = {
   'Sliders preview live and save on release; ◇ starts keyframes per slider (diamonds appear on the clip). Export renders the same filter chain.': '拖动滑块实时预览，松开即保存；◇ 为单个滑块开启关键帧（菱形显示在片段上）。导出使用完全相同的滤镜链。',
   // canvas
   'Colour space': '色彩空间',
+  // cover frame (封面)
+  'Cover (封面)': '封面',
+  'Use the current playhead frame as the project cover': '将当前播放头帧设为项目封面',
+  'Remove the project cover time': '清除项目封面时间',
+  'Export cover frame (PNG)': '导出封面帧（PNG）',
+  'No cover set — the playhead frame is one click away.': '尚未设置封面 — 一键取当前播放头帧。',
+  'Cover frame: ': '封面帧：',
+  'Cover set at ': '封面已设置于 ',
+  'Cover cleared': '封面已清除',
+  'cover': '封面',
+  // split at markers (一键卡点)
+  'Split at markers (卡点)': '在标记处分割（卡点）',
+  'No markers on the timeline': '时间线上没有标记',
+  'Select a clip to split at markers': '请先选择要在标记处分割的片段',
+  'No markers inside the selected clip(s)': '所选片段范围内没有标记',
+  'Split at markers: ': '已按标记分割：',
+  // asset favourites (收藏)
+  'Show favourites only': '只看收藏',
+  'Add to favourites': '加入收藏',
+  'Remove from favourites': '取消收藏',
+  'Added to favourites': '已加入收藏',
+  'Removed from favourites': '已取消收藏',
+  // vertical text + credits roll
+  'Vertical text (竖排)': '竖排文字',
+  'Vertical text (竖排) on': '竖排文字（已开启）',
+  'Toggle CJK vertical writing (writing-mode: vertical-rl)': '切换中文竖排（writing-mode: vertical-rl）',
+  'Credits roll (滚动字幕)': '滚动字幕',
+  'Animate the cue from below the frame to above it across the whole clip (one Y keyframe track)': '让该字幕在片段时长内从画面下方滚动到上方（一条 Y 关键帧轨道）',
+  'Credits roll applied — drag the Y diamonds to retime': '滚动字幕已应用 — 拖动 Y 菱形可调整节奏',
   // language toggle
   '中文': 'English',
   'Switch UI language': '切换界面语言',

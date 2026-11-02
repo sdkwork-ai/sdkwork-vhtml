@@ -137,6 +137,8 @@ main{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;min-he
 .asset-meta b{font-size:10px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .asset-meta small{font-size:9px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .asset-card .add{position:absolute;right:4px;top:4px;width:22px;height:22px;padding:0;line-height:20px;border-radius:6px;background:rgba(8,15,26,.82)}
+.asset-card .fav{position:absolute;right:4px;bottom:4px;width:22px;height:22px;padding:0;line-height:20px;border-radius:6px;background:rgba(8,15,26,.82);color:var(--muted)}
+.asset-card .fav.on{color:#ffd54a;border-color:#6b5a1e}
 .asset-card .add.swap{right:30px;background:rgba(110,231,255,.18);border-color:var(--accent);color:var(--accent)}
 .replace-banner{display:flex;align-items:center;gap:8px;padding:6px 8px;border:1px solid var(--accent);border-radius:8px;background:rgba(110,231,255,.08);font-size:11px;margin-bottom:8px}
 .replace-banner span{flex:1}
@@ -536,6 +538,13 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     <button id="proxy" title="Proxy preview media (360p H.264) for smooth scrubbing on heavy footage">Proxy</button>
         <button id="exp-inout" type="button">Use In/Out</button>
       </div>
+      <div class="field full checks">
+        <label data-i18n="Cover (封面)">Cover (封面)</label>
+        <button id="exp-cover-set" type="button" title="Use the current playhead frame as the project cover">📷 Set cover at playhead</button>
+        <button id="exp-cover-clear" type="button" title="Remove the project cover time" style="display:none">✕</button>
+        <span id="exp-cover-info" class="hint"></span>
+        <label><input type="checkbox" id="exp-cover" /> Export cover frame (PNG)</label>
+      </div>
       <div class="field full"><label data-i18n="Progress">Progress</label><div class="progress"><i id="exp-progress"></i></div><div class="result" id="exp-result"></div></div>
     </div>
     <div class="modal-foot"><button id="export-cancel">Close</button><button id="export-start" class="primary">Start export</button></div>
@@ -567,7 +576,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 <script>
 (function(){
   'use strict';
-  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, timelineStack:[], attributeClipboard:null, assetSearch:'', laneFocus:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
+  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, timelineStack:[], attributeClipboard:null, assetSearch:'', assetFavoritesOnly:false, laneFocus:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
   var el = function(id){ return document.getElementById(id); };
   var stage = el('stage');
   var tracksEl = el('tracks');
@@ -3451,6 +3460,43 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     });
     box.appendChild(presets);
 
+    var motionRow = document.createElement('div');
+    motionRow.className = 'btn-row';
+    var mode = style['writing-mode'] || 'horizontal-tb';
+    var vertical = document.createElement('button');
+    vertical.textContent = mode === 'vertical-rl' ? t('Vertical text (竖排) on') : t('Vertical text (竖排)');
+    vertical.title = t('Toggle CJK vertical writing (writing-mode: vertical-rl)');
+    vertical.className = mode === 'vertical-rl' ? 'active' : '';
+    vertical.onclick = function(){
+      setCueStyle(clip, { 'writing-mode': mode === 'vertical-rl' ? null : 'vertical-rl' });
+    };
+    motionRow.appendChild(vertical);
+    var rolling = (clip.animations || []).some(function(animation){ return animation.property === 'y'; });
+    var roll = document.createElement('button');
+    roll.textContent = t('Credits roll (滚动字幕)');
+    roll.title = t('Animate the cue from below the frame to above it across the whole clip (one Y keyframe track)');
+    roll.className = rolling ? 'active' : '';
+    roll.onclick = function(){
+      var height = state.model.height || 1080;
+      var duration = Number(clip.duration.toFixed(6));
+      var track = {
+        id: 'anim-roll-' + clip.id + '-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36),
+        property: 'y',
+        timeBase: 'clip',
+        start: 0,
+        duration: duration,
+        keyframes: [{ time: 0, value: height }, { time: duration, value: -height }],
+        easing: 'linear', iterations: 1, direction: 'normal', fill: 'both', compose: 'replace', enabled: true,
+      };
+      var animations = (clip.animations || []).filter(function(animation){ return animation.property !== 'y'; });
+      animations.push(track);
+      edit([{ op:'clip.set', clipId:clip.id, props:{ animations: animations } }])
+        .then(function(){ toast(t('Credits roll applied — drag the Y diamonds to retime')); })
+        .catch(function(){});
+    };
+    motionRow.appendChild(roll);
+    box.appendChild(motionRow);
+
     var grid = document.createElement('div');
     grid.className = 'text-style-grid';
     function cell(labelText, full){
@@ -4181,6 +4227,15 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       renderInspector();
     });
     toolbar.appendChild(search);
+    var favBtn = document.createElement('button');
+    favBtn.textContent = '★';
+    favBtn.title = t('Show favourites only');
+    favBtn.className = state.assetFavoritesOnly ? 'on' : '';
+    favBtn.onclick = function(){
+      state.assetFavoritesOnly = !state.assetFavoritesOnly;
+      renderInspector();
+    };
+    toolbar.appendChild(favBtn);
     var importBtn = document.createElement('button');
     importBtn.textContent = '＋ Import';
     importBtn.className = 'primary';
@@ -4214,12 +4269,24 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     var visibleCount = 0;
     state.assets.forEach(function(asset){
       if (needle && (asset.id + ' ' + asset.kind).toLowerCase().indexOf(needle) < 0) return;
+      var favourite = asset.metadata && asset.metadata.favorite === '1';
+      if (state.assetFavoritesOnly && !favourite) return;
       visibleCount++;
       var card = document.createElement('div');
       card.className = 'asset-card' + (state.assetSelected === asset.id ? ' selected' : '') + (asset.exists === false ? ' missing' : '');
       card.draggable = true;
       card.dataset.assetId = asset.id;
       card.title = asset.id + ' · ' + asset.kind + ' · ' + asset.src;
+      var fav = document.createElement('button');
+      fav.className = 'fav' + (favourite ? ' on' : '');
+      fav.textContent = favourite ? '★' : '☆';
+      fav.title = favourite ? t('Remove from favourites') : t('Add to favourites');
+      fav.onclick = function(event){
+        event.stopPropagation();
+        edit([{ op:'asset.set', assetId:asset.id, props:{ metadata: Object.assign({}, asset.metadata, { favorite: favourite ? '' : '1' }) } }])
+          .then(function(){ toast(favourite ? t('Removed from favourites') : t('Added to favourites')); }).catch(function(){});
+      };
+      card.appendChild(fav);
       if (asset.exists === false){
         var relink = document.createElement('button');
         relink.className = 'relink';
@@ -4841,6 +4908,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       var locked = Boolean(lane && lane.locked);
       ctxTitle(menu, clip.label || clip.id);
       ctxItem(menu, t('Split at playhead'), 'S', function(){ splitClipIds(selected); }, locked);
+      ctxItem(menu, t('Split at markers (卡点)'), '', function(){ splitSelectionAtMarkers(); }, locked || !timelineMarkers().length);
       ctxItem(menu, t('Duplicate'), 'Ctrl+D', function(){ duplicateSelection(selected); }, locked);
       ctxSep(menu);
       ctxItem(menu, t('Copy'), 'Ctrl+C', function(){ copySelected(false); });
@@ -6215,6 +6283,29 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   function splitSelected(){
     splitClipIds(selectionIds());
   }
+  // 一键卡点: split every selected clip at the markers inside its range —
+  // the beat markers from 自动踩点 included — one splitMulti per clip.
+  function splitSelectionAtMarkers(){
+    var markers = timelineMarkers().map(function(marker){ return marker.time; }).sort(function(a,b){ return a - b; });
+    if (!markers.length) return toast(t('No markers on the timeline'), true);
+    var ids = selectionIds();
+    if (!ids.length) return toast(t('Select a clip to split at markers'), true);
+    var ops = [];
+    ids.forEach(function(id){
+      var found = clipById(id);
+      if (!found || found.lane.locked) return;
+      var clip = found.clip;
+      var times = markers.filter(function(time){
+        return time > clip.start + 0.001 && time < clip.start + clip.duration - 0.001;
+      });
+      if (!times.length) return;
+      ops.push({ op:'clip.splitMulti', clipId:id, times:times });
+    });
+    if (!ops.length) return toast(t('No markers inside the selected clip(s)'), true);
+    edit(ops).then(function(){
+      toast(t('Split at markers: ') + ops.length + t(' clip(s)'));
+    }).catch(function(){});
+  }
   function linkedPartnerIds(found){
     var clip = found.clip;
     var partners = [];
@@ -7081,8 +7172,33 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     el('exp-report').checked = false;
     el('exp-batch').checked = false;
     el('exp-loudness').value = '';
+    refreshExportCoverRow();
     el('exp-progress').style.width = '0%';
     el('exp-result').textContent = '';
+  }
+  function coverTimeOf(){
+    var raw = state.model.metadata ? Number(state.model.metadata['cover-time']) : NaN;
+    return isFinite(raw) && state.model.metadata['cover-time'] !== '' && raw >= 0 ? raw : null;
+  }
+  function refreshExportCoverRow(){
+    var cover = coverTimeOf();
+    el('exp-cover-info').textContent = cover === null
+      ? t('No cover set — the playhead frame is one click away.')
+      : t('Cover frame: ') + fmtTime(cover);
+    el('exp-cover-clear').style.display = cover === null ? 'none' : '';
+    el('exp-cover').checked = cover !== null;
+  }
+  function setCoverAtPlayhead(){
+    var time = snap(state.time);
+    edit([{ op:'project.set', metadata:{ 'cover-time': String(time) } }])
+      .then(function(){
+        refreshExportCoverRow();
+        toast(t('Cover set at ') + fmtTime(time));
+      }).catch(function(){});
+  }
+  function clearCover(){
+    edit([{ op:'project.set', metadata:{ 'cover-time': '' } }])
+      .then(function(){ refreshExportCoverRow(); toast(t('Cover cleared')); }).catch(function(){});
   }
   function closeExport(){ el('export-modal').classList.remove('open'); }
   function runOneExport(payload){
@@ -7120,6 +7236,11 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     if (el('exp-burn').checked) payload.burnCaptions = true;
     if (el('exp-vtt').checked) payload.captions = true;
     if (el('exp-report').checked) payload.report = true;
+    var cover = coverTimeOf();
+    if (el('exp-cover').checked && cover !== null){
+      payload.cover = true;
+      payload.coverTime = cover;
+    }
     var loudness = parseFloat(el('exp-loudness').value);
     if (isFinite(loudness)) payload.loudness = loudness;
     if (el('exp-batch').checked && state.presets.length){
@@ -7137,7 +7258,9 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
               burnCaptions: payload.burnCaptions,
               captions: payload.captions,
               report: payload.report,
-              loudness: payload.loudness
+              loudness: payload.loudness,
+              cover: i === 0 ? payload.cover : false,
+              coverTime: payload.coverTime
             });
             done += 1;
             void job;
@@ -7169,6 +7292,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         var links = 'Complete · <a href="' + job.url + '" download>open ' + escapeHtml(job.file) + '</a> (' + (job.sizeBytes/1048576).toFixed(2) + ' MiB)';
         if (job.captions) links += ' · <a href="' + job.captions + '" download>captions</a>';
         if (job.report) links += ' · <a href="' + job.report + '" download>report</a>';
+        if (job.cover) links += ' · <a href="' + job.cover + '" download>' + escapeHtml(t('cover')) + '</a>';
         el('exp-result').innerHTML = links;
         toast(t('Export complete'));
       } else if (job.status === 'failed'){
@@ -7463,6 +7587,8 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     };
     el('export').onclick = openExport;
     el('export-close').onclick = closeExport;
+    el('exp-cover-set').onclick = setCoverAtPlayhead;
+    el('exp-cover-clear').onclick = clearCover;
     el('export-cancel').onclick = closeExport;
     el('export-start').onclick = startExport;
     el('exp-delivery').onchange = function(){
