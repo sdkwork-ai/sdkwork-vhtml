@@ -208,7 +208,13 @@ Select a clip to edit everything the model supports:
   to level/diagonal angles and live x/y/scale/rotate readouts while dragging);
 - **Layer ordering**: bring forward / send backward / front / back from the
   clip context menu; multi-selection can be aligned to the playhead;
-- audio: volume, pan, fades, mute, detach-audio;
+- audio: volume, pan, fades, mute, detach-audio, and **Pitch follows speed
+  (变调)** — the normative `pitch-follows-speed` clip attribute: speed
+  changes shift pitch like tape (`asetrate`+`aresample` in the export mixer,
+  `preservesPitch=false` in the preview) instead of the default
+  pitch-preserving `atempo` stretch;
+- stickers from the shape library get a **Sticker** section: pick a new
+  colour and the data-URI SVG asset is regenerated in place;
 - captions: text;
 - **Keyframes**: add per-property keyframe tracks (opacity, position, scale,
   rotation) at the playhead, then edit each keyframe's time, value and easing
@@ -339,6 +345,20 @@ Properties afterwards.
 - The manifest `paths` are obeyed for imports, generated output, renders and
   cache.
 
+## Version history (版本历史)
+
+**🕘** (header) opens the local backup list — the CapCut draft-backup
+counterpart. Every save (each edit saves) is snapshotted under
+`.vhtml/cache/studio-history/<timestamp>-r<revision>[-label].vhtml`,
+deduplicated by content, spaced at least 20 s apart and capped at the last 40
+files (older ones are pruned by the editor). **📌 Save version…** pins the
+current state immediately with an optional label. **Restore** first snapshots
+the current state (`before restore`), then reloads the chosen document through
+the same path as autosave recovery — the entry file is rewritten, the undo
+stack restarts, and a wrong pick is one more restore away. Autosave
+(`<entry>.autosave`) remains the crash-recovery checkpoint; history is the
+explicit, browsable timeline of saved states.
+
 ## Canvas & project settings
 
 **⚙ Canvas** (header) opens the project settings: aspect-ratio presets
@@ -369,7 +389,10 @@ The export dialog offers:
   deterministic frame as `<stem>.cover.png` next to the video after the
   export finishes (batch exports cover only the first file);
 - **Chapters from markers**: muxes `type="chapter"` markers into MP4 output
-  (auto-ticked when the timeline has chapter markers).
+  (auto-ticked when the timeline has chapter markers). MP4 chapter tracks
+  cover the file from 0, so the first chapter always starts at 0:00 (the
+  FFmpeg mov muxer extends it backwards) — put a chapter marker at the start
+  if you want its own title; later boundaries are exact.
 
 Completed jobs link the video, captions sidecar, report and cover.
 
@@ -390,6 +413,9 @@ Completed jobs link the video, captions sidecar, report and cover.
 | `/api/undo` | POST | undo |
 | `/api/redo` | POST | redo |
 | `/api/reload` | POST | re-read external files and reset the edit session |
+| `/api/history` | GET | version history entries (`id`, `savedAt`, `revision`, `label`, `sizeBytes`) |
+| `/api/history/snapshot` | POST | `{ label? }` pin the current state as a version now |
+| `/api/history/restore` | POST | `{ id }` snapshot the current state, then reload that version |
 | `/api/presets` | GET | delivery preset catalog for the export dialog |
 | `/api/media/peaks` | GET | `?asset=<id>` normalized audio waveform buckets (cached) |
 | `/api/media/beats` | GET | `?asset=<id>` 自动踩点 — `{ bpm, beats, strong, onsets }` onset + beat-grid detection (cached) |
