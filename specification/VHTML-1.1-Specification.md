@@ -297,6 +297,8 @@ VHTML 1.1 不承诺：
 | `vignette` | `amount` | 暗角 |
 | `tint` / `color-overlay` | `color/opacity/blend` | 颜色叠加 |
 | `rounded` | `radius` | 圆角 |
+| `border` | `width/color` | 画中画/贴纸边框：绘制在 Clip 层盒内侧（随 `rounded` 圆角），`width` px |
+| `curves` | `master/r/g/b` | 色彩曲线：每个参数为 `x,y;x,y;…`（0..1 单位区间）的控制点列表，端点钉在 x=0/x=1；参考实现用 Fritsch–Carlson 单调三次插值采样 33 档 `feComponentTransfer` 表，先 `master`（RGB）再分通道；恒等曲线不产生滤镜 |
 | `mask` | `shape/inset/points/value/feather` | `clip-path` 遮罩；`feather` >0 时改用渐变 `mask-image` 羽化边缘（圆形任意角度；椭圆/矩形需未旋转），硬边回退为 `points` 多边形 |
 | `adjust` | `brightness/contrast/saturation/temperature/tint/sharpen/highlights/shadows/fade/vignette/grain` | NLE 调节面板，全部参数为 −100..100 滑杆（0 = 不变）。亮度/对比度/饱和度走 CSS filter 倍率（±50%、±50%、0..2×）；色温/色调走 `feColorMatrix` 对角矩阵，高光/阴影/褪色走 `feComponentTransfer` 色调曲线表，锐化走 `feConvolveMatrix` 非锐化卷积，四者合成一条自包含 SVG data-URI filter；`vignette/grain` 复用暗角/颗粒叠加层。参考实现要求 `color-interpolation-filters="sRGB"` |
 | `chroma-key` | `color/tolerance/spill` | 媒体色键（参考实现用 Canvas） |

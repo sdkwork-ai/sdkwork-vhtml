@@ -103,6 +103,8 @@ The timeline is a full non-linear editing surface; every gesture is one
 validated Core Model edit (undoable, saved atomically).
 
 - Move, trim, split, ripple delete; drag vertically to another compatible lane.
+  Magnetic snapping targets clip edges, the playhead, the timeline ends **and
+  every marker** (beat markers included), so trims land on the beat.
 - **Roll edit**: dragging the shared edge between two adjacent clips rolls the
   cut point — both clips trim together and the gap never opens
   (`clip.roll`, magnetic-snapped, Shift bypasses).
@@ -253,6 +255,19 @@ Select a clip to edit everything the model supports:
   grade this lane **and every lane below it** while captions stay above and
   untouched — the CapCut adjustment-layer semantics. The lane header shows an
   **FX** badge while a layer is active; *Remove adjustment layer* clears it.
+- **Curves (曲线)**: a grading-curve editor on the normative `curves` effect
+  — RGB master plus R / G / B channel tabs, draggable points (end points move
+  vertically), click the grid to add, double-click to remove, presets
+  (S-curve, Soft S, Lift shadows, Crush blacks, Matte fade) and per-channel
+  reset. The drawn curve is the Fritsch–Carlson monotone cubic the runtime
+  samples into 33-entry `feComponentTransfer` tables (master first, then the
+  channel), previewed live and rendered identically on export; identity
+  curves remove the effect.
+- **Border (边框)**: a `border` effect (width + colour swatch/eyedropper)
+  draws a frame inside the clip box for picture-in-picture and stickers; it
+  follows rounded corners.
+- **Crop ratio presets**: Free / 1:1 / 4:5 / 9:16 / 16:9 / 2.35:1 apply a
+  centred crop of the frame to that ratio (scale to refill when needed).
 - **Text style (文本样式)**: caption clips expose structured typography —
   font family (suggestions include the project's font assets), size, bold,
   italic, colour, stroke (width + colour with `paint-order: stroke fill`),

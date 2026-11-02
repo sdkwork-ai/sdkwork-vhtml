@@ -324,6 +324,7 @@ body.fullscreen-stage .inspector{display:none}
 .adjust-row input[type=range]{width:100%;min-width:0;padding:0;height:18px;accent-color:var(--accent)}
 .adjust-row output{text-align:right;font-variant-numeric:tabular-nums;color:var(--text)}
 .look-row{display:flex;flex-wrap:wrap;gap:5px}
+.curve-editor{display:block;background:#08111e;border:1px solid var(--line2);border-radius:8px;touch-action:none}
 .look-row button{padding:3px 9px;font-size:11px;border-radius:999px}
 .look-row button.active{border-color:var(--accent);color:var(--accent);background:#102b3a}
 .text-style-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
@@ -1342,6 +1343,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       box.appendChild(selectField('Blend', clip.blend, ['normal','multiply','screen','overlay','darken','lighten','color-dodge','color-burn','soft-light','hard-light','difference','exclusion','hue','saturation','color','luminosity'], function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ blend:value } }]); }));
       renderStickerSection(box, clip);
       renderAdjustSection(box, clip);
+      renderCurvesSection(box, clip);
       renderCropSection(box, clip);
       renderMaskSection(box, clip);
       renderCameraSection(box, clip);
@@ -1795,6 +1797,31 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     title.textContent = 'Crop · % of frame (region reveal)';
     box.appendChild(title);
     var crop = clip.crop || { left: 0, right: 0, top: 0, bottom: 0 };
+    // Aspect presets: a centred crop of the frame to the target ratio
+    // (CapCut 裁剪比例); the layer box never rescales — scale to refill.
+    var ratios = document.createElement('div');
+    ratios.className = 'look-row';
+    [['free', 'Free', 0], ['1:1', '1:1', 1], ['4:5', '4:5', 4 / 5], ['9:16', '9:16', 9 / 16], ['16:9', '16:9', 16 / 9], ['2.35:1', '2.35:1', 2.35]].forEach(function(def){
+      var chip = document.createElement('button');
+      chip.textContent = def[1];
+      chip.title = def[2] ? t('Centred crop to ') + def[1] : t('Clear the crop');
+      chip.onclick = function(){
+        if (!def[2]) return edit([{ op:'clip.set', clipId:clip.id, props:{ crop:null } }]).catch(function(){});
+        var frame = (state.model.width || 16) / (state.model.height || 9);
+        var next = { left: 0, right: 0, top: 0, bottom: 0 };
+        if (def[2] < frame){
+          var side = (1 - def[2] / frame) / 2;
+          next.left = side; next.right = side;
+        } else {
+          var band = (1 - frame / def[2]) / 2;
+          next.top = band; next.bottom = band;
+        }
+        edit([{ op:'clip.set', clipId:clip.id, props:{ crop:next } }])
+          .then(function(){ toast(t('Cropped to ') + def[1]); }).catch(function(){});
+      };
+      ratios.appendChild(chip);
+    });
+    box.appendChild(ratios);
     var grid = document.createElement('div');
     grid.className = 'caption-style-grid';
     var names = [['left', 'Left %'], ['right', 'Right %'], ['top', 'Top %'], ['bottom', 'Bottom %']];
@@ -2777,8 +2804,10 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     'color-overlay': { params:{ color:'#6ee7ff', opacity:0.35, blend:'normal' } },
     'chroma-key': { params:{ color:'#00ff00', tolerance:0.25, spill:0.15 } },
     'rounded': { params:{ radius:'24px' } },
+    'border': { params:{ width:6, color:'#ffffff' } },
     'mask': { params:{ shape:'circle', size:60, cx:50, cy:50, angle:0, invert:false } },
     'adjust': { params:{ brightness:0, contrast:0, saturation:0, temperature:0, tint:0, sharpen:0, highlights:0, shadows:0, fade:0, vignette:0, grain:0 } },
+    'curves': { params:{ master:'0,0;1,1' } },
     'typewriter': { params:{ cps:12, delay:0, cursor:'' } },
     'filter': { params:{ value:'none' } },
     'css': { params:{ style:'' } },
@@ -2800,8 +2829,10 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     'color-overlay': 'Color overlay',
     'chroma-key': 'Chroma key (green screen)',
     'rounded': 'Rounded corners',
+    'border': 'Border (边框)',
     'mask': 'Mask (蒙版)',
     'adjust': 'Adjust (调节)',
+    'curves': 'Curves (曲线)',
     'typewriter': 'Typewriter (打字机)',
     'filter': 'Custom filter',
     'css': 'Custom CSS',
@@ -2888,7 +2919,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     box.appendChild(title);
     renderEffectRows(box, clip.effects || [], function(nextEffects){
       return edit([{ op:'clip.set', clipId:clip.id, props:{ effects:nextEffects } }]).catch(function(){});
-    }, { skipTypes: ['mask', 'adjust', 'typewriter'], addCatalog: true, onAdd: applyEffectToSelection });
+    }, { skipTypes: ['mask', 'adjust', 'curves', 'typewriter'], addCatalog: true, onAdd: applyEffectToSelection });
   }
 
   // Generic effect list editor shared by clips (clip.set) and lanes
@@ -3390,6 +3421,277 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     actions.appendChild(remove);
     actions.appendChild(back);
     box.appendChild(actions);
+  }
+
+  // ---------- curves (曲线 · colour curves) ----------
+
+  var CURVE_CHANNELS = [['master', 'RGB', 'var(--accent)'], ['r', 'R', '#ff6b6b'], ['g', 'G', '#6bff95'], ['b', 'B', '#6b9bff']];
+  var CURVE_PRESETS = [
+    { id: 'linear', label: 'Linear', master: '0,0;1,1' },
+    { id: 's', label: 'S-curve', master: '0,0;0.25,0.18;0.75,0.82;1,1' },
+    { id: 'soft', label: 'Soft S', master: '0,0;0.25,0.22;0.75,0.78;1,1' },
+    { id: 'lift', label: 'Lift shadows', master: '0,0.08;0.5,0.55;1,1' },
+    { id: 'crush', label: 'Crush blacks', master: '0,0;0.25,0.17;1,1' },
+    { id: 'fade', label: 'Matte fade', master: '0,0.12;0.5,0.5;1,0.92' },
+  ];
+  function parseCurve(value){
+    // Same contract as the runtime: "x,y;x,y;…" in 0..1, sorted, endpoints pinned.
+    if (typeof value !== 'string' || !value.trim()) return null;
+    var points = [];
+    value.split(';').forEach(function(pair){
+      var parts = pair.split(',').map(function(part){ return Number(part.trim()); });
+      if (parts.length !== 2 || !isFinite(parts[0]) || !isFinite(parts[1])) return;
+      points.push([Math.max(0, Math.min(1, parts[0])), Math.max(0, Math.min(1, parts[1]))]);
+    });
+    if (points.length < 2) return null;
+    points.sort(function(a, b){ return a[0] - b[0]; });
+    if (points[0][0] > 0) points.unshift([0, points[0][1]]);
+    if (points[points.length - 1][0] < 1) points.push([1, points[points.length - 1][1]]);
+    return points;
+  }
+  function formatCurve(points){
+    return points.map(function(point){ return (Math.round(point[0] * 1000) / 1000) + ',' + (Math.round(point[1] * 1000) / 1000); }).join(';');
+  }
+  function curveIsIdentity(points){
+    return !points || (points.length === 2 && Math.abs(points[0][1]) < 1e-4 && Math.abs(points[1][1] - 1) < 1e-4);
+  }
+  function sampleCurveClient(points, x){
+    // Fritsch–Carlson monotone cubic — mirrors the runtime so the drawn
+    // curve is the curve that renders.
+    var n = points.length;
+    if (!n) return x;
+    if (n === 1 || x <= points[0][0]) return points[0][1];
+    if (x >= points[n - 1][0]) return points[n - 1][1];
+    var h = [], delta = [], m = [], i;
+    for (i = 0; i < n - 1; i++){
+      var dx = points[i + 1][0] - points[i][0];
+      h.push(dx);
+      delta.push(dx > 0 ? (points[i + 1][1] - points[i][1]) / dx : 0);
+    }
+    for (i = 0; i < n; i++) m.push(0);
+    m[0] = delta[0]; m[n - 1] = delta[n - 2];
+    for (i = 1; i < n - 1; i++) m[i] = delta[i - 1] * delta[i] <= 0 ? 0 : (delta[i - 1] + delta[i]) / 2;
+    for (i = 0; i < n - 1; i++){
+      if (delta[i] === 0){ m[i] = 0; m[i + 1] = 0; continue; }
+      var a = m[i] / delta[i], b = m[i + 1] / delta[i], s = a * a + b * b;
+      if (s > 9){ var tau = 3 / Math.sqrt(s); m[i] = tau * a * delta[i]; m[i + 1] = tau * b * delta[i]; }
+    }
+    i = 0;
+    while (i < n - 2 && x > points[i + 1][0]) i++;
+    var t = h[i] > 0 ? (x - points[i][0]) / h[i] : 0, t2 = t * t, t3 = t2 * t;
+    var value = (2 * t3 - 3 * t2 + 1) * points[i][1] + (t3 - 2 * t2 + t) * h[i] * m[i] + (-2 * t3 + 3 * t2) * points[i + 1][1] + (t3 - t2) * h[i] * m[i + 1];
+    return Math.max(0, Math.min(1, value));
+  }
+  function curvesEffectOf(clip){
+    return (clip.effects || []).filter(function(fx){ return fx.type === 'curves'; })[0] || null;
+  }
+  function curvesParamsOf(clip){
+    var fx = curvesEffectOf(clip);
+    var out = {};
+    CURVE_CHANNELS.forEach(function(channel){ out[channel[0]] = fx && fx.params && typeof fx.params[channel[0]] === 'string' ? fx.params[channel[0]] : ''; });
+    return out;
+  }
+  function curvesEffectsWith(clip, params){
+    // Drop the effect entirely when every channel is identity so documents
+    // never carry no-op curves; otherwise keep only non-identity channels.
+    var effects = clip.effects || [];
+    var cleaned = {};
+    CURVE_CHANNELS.forEach(function(channel){
+      var points = parseCurve(params[channel[0]]);
+      if (points && !curveIsIdentity(points)) cleaned[channel[0]] = formatCurve(points);
+    });
+    var existing = curvesEffectOf(clip);
+    if (!Object.keys(cleaned).length) return effects.filter(function(fx){ return fx.type !== 'curves'; });
+    if (existing){
+      var updated = Object.assign({}, existing, { params: cleaned, enabled: true });
+      return effects.map(function(fx){ return fx.id === existing.id ? updated : fx; });
+    }
+    return effects.concat([{
+      id: 'fx-curves-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36),
+      type: 'curves',
+      params: cleaned,
+      enabled: true,
+    }]);
+  }
+  function commitCurves(clip, params, message){
+    return edit([{ op:'clip.set', clipId:clip.id, props:{ effects: curvesEffectsWith(clip, params) } }])
+      .then(function(){ if (message) toast(message); })
+      .catch(function(){});
+  }
+  function renderCurvesSection(box, clip){
+    var params = curvesParamsOf(clip);
+    var channelId = state.curveChannel || 'master';
+    var channel = CURVE_CHANNELS.filter(function(candidate){ return candidate[0] === channelId; })[0] || CURVE_CHANNELS[0];
+    var points = parseCurve(params[channel[0]]) || [[0, 0], [1, 1]];
+
+    var title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = t('Curves (曲线)');
+    box.appendChild(title);
+
+    var tabs = document.createElement('div');
+    tabs.className = 'btn-row';
+    CURVE_CHANNELS.forEach(function(def){
+      var tab = document.createElement('button');
+      var active = !curveIsIdentity(parseCurve(params[def[0]]));
+      tab.textContent = def[1] + (active ? ' •' : '');
+      tab.title = t('Edit the ') + def[1] + t(' curve');
+      tab.className = def[0] === channel[0] ? 'active' : '';
+      tab.style.color = def[0] === channel[0] ? def[2] : '';
+      tab.onclick = function(){ state.curveChannel = def[0]; renderInspector(); };
+      tabs.appendChild(tab);
+    });
+    box.appendChild(tabs);
+
+    var W = 200, H = 200, pad = 10;
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('width', W);
+    svg.setAttribute('height', H);
+    svg.setAttribute('viewBox', '0 0 ' + W + ' ' + H);
+    svg.className.baseVal = 'curve-editor';
+    svg.style.width = '100%';
+    svg.style.maxWidth = W + 'px';
+    function xOf(v){ return pad + v * (W - 2 * pad); }
+    function yOf(v){ return H - pad - v * (H - 2 * pad); }
+    function vOfX(x){ return Math.max(0, Math.min(1, (x - pad) / (W - 2 * pad))); }
+    function vOfY(y){ return Math.max(0, Math.min(1, (H - pad - y) / (H - 2 * pad))); }
+    [0.25, 0.5, 0.75].forEach(function(v){
+      var vertical = document.createElementNS(NS, 'line');
+      vertical.setAttribute('x1', xOf(v)); vertical.setAttribute('x2', xOf(v));
+      vertical.setAttribute('y1', yOf(0)); vertical.setAttribute('y2', yOf(1));
+      vertical.setAttribute('stroke', '#1b2a42');
+      svg.appendChild(vertical);
+      var horizontal = document.createElementNS(NS, 'line');
+      horizontal.setAttribute('x1', xOf(0)); horizontal.setAttribute('x2', xOf(1));
+      horizontal.setAttribute('y1', yOf(v)); horizontal.setAttribute('y2', yOf(v));
+      horizontal.setAttribute('stroke', '#1b2a42');
+      svg.appendChild(horizontal);
+    });
+    var diagonal = document.createElementNS(NS, 'line');
+    diagonal.setAttribute('x1', xOf(0)); diagonal.setAttribute('y1', yOf(0));
+    diagonal.setAttribute('x2', xOf(1)); diagonal.setAttribute('y2', yOf(1));
+    diagonal.setAttribute('stroke', '#30456a');
+    diagonal.setAttribute('stroke-dasharray', '4 4');
+    svg.appendChild(diagonal);
+    var curve = document.createElementNS(NS, 'polyline');
+    curve.setAttribute('fill', 'none');
+    curve.setAttribute('stroke', channel[2]);
+    curve.setAttribute('stroke-width', '2');
+    svg.appendChild(curve);
+    var dots = document.createElementNS(NS, 'g');
+    svg.appendChild(dots);
+
+    function nextParams(){
+      var patch = Object.assign({}, params);
+      patch[channel[0]] = formatCurve(points);
+      return patch;
+    }
+    function preview(){
+      previewOnStage('previewClip', clip.id, { effects: curvesEffectsWith(clip, nextParams()) });
+    }
+    function commit(){
+      commitCurves(clip, nextParams());
+    }
+    function redraw(){
+      points.sort(function(a, b){ return a[0] - b[0]; });
+      var samples = [];
+      for (var i = 0; i <= 64; i++){
+        var x = i / 64;
+        samples.push(xOf(x) + ',' + yOf(sampleCurveClient(points, x)));
+      }
+      curve.setAttribute('points', samples.join(' '));
+      while (dots.firstChild) dots.removeChild(dots.firstChild);
+      points.forEach(function(point, index){
+        var circle = document.createElementNS(NS, 'circle');
+        circle.setAttribute('cx', xOf(point[0]));
+        circle.setAttribute('cy', yOf(point[1]));
+        circle.setAttribute('r', '5');
+        circle.setAttribute('fill', '#ffd27d');
+        circle.setAttribute('stroke', '#6b4b0a');
+        circle.style.cursor = 'move';
+        attachDrag(circle, index);
+        circle.addEventListener('dblclick', function(event){
+          event.preventDefault();
+          if (index === 0 || index === points.length - 1) return toast(t('End points stay; drag them vertically'), true);
+          points.splice(index, 1);
+          commit();
+        });
+        dots.appendChild(circle);
+      });
+    }
+    function attachDrag(circle, index){
+      circle.addEventListener('pointerdown', function(event){
+        event.preventDefault();
+        event.stopPropagation();
+        circle.setPointerCapture(event.pointerId);
+        var endpoint = index === 0 || index === points.length - 1;
+        var move = function(moveEvent){
+          var rect = svg.getBoundingClientRect();
+          var scale = W / rect.width;
+          var x = vOfX((moveEvent.clientX - rect.left) * scale);
+          var y = vOfY((moveEvent.clientY - rect.top) * scale);
+          if (!endpoint){
+            var minX = points[index - 1][0] + 0.01;
+            var maxX = points[index + 1][0] - 0.01;
+            points[index][0] = Math.max(minX, Math.min(maxX, x));
+          }
+          points[index][1] = y;
+          redraw();
+          preview();
+        };
+        var up = function(){
+          circle.removeEventListener('pointermove', move);
+          circle.removeEventListener('pointerup', up);
+          commit();
+        };
+        circle.addEventListener('pointermove', move);
+        circle.addEventListener('pointerup', up);
+      });
+    }
+    svg.addEventListener('pointerdown', function(event){
+      if (event.target !== svg && event.target.tagName !== 'line' && event.target.tagName !== 'polyline') return;
+      var rect = svg.getBoundingClientRect();
+      var scale = W / rect.width;
+      var x = vOfX((event.clientX - rect.left) * scale);
+      var y = vOfY((event.clientY - rect.top) * scale);
+      var insertAt = points.length;
+      for (var i = 0; i < points.length; i++){ if (points[i][0] > x){ insertAt = i; break; } }
+      if (insertAt === 0 || insertAt === points.length) return;
+      if (x - points[insertAt - 1][0] < 0.02 || points[insertAt][0] - x < 0.02) return toast(t('Points are too close together here'), true);
+      points.splice(insertAt, 0, [x, y]);
+      commit();
+    });
+    redraw();
+    box.appendChild(svg);
+
+    var presets = document.createElement('div');
+    presets.className = 'look-row';
+    CURVE_PRESETS.forEach(function(preset){
+      var chip = document.createElement('button');
+      chip.textContent = t(preset.label);
+      chip.title = t('Apply to the RGB master curve');
+      chip.onclick = function(){
+        var patch = Object.assign({}, params, { master: preset.master });
+        state.curveChannel = 'master';
+        commitCurves(clip, patch, t('Curve preset: ') + t(preset.label));
+      };
+      presets.appendChild(chip);
+    });
+    var reset = document.createElement('button');
+    reset.textContent = t('Reset channel');
+    reset.className = 'danger';
+    reset.onclick = function(){
+      var patch = Object.assign({}, params);
+      patch[channel[0]] = '';
+      commitCurves(clip, patch, t('Curve reset: ') + channel[1]);
+    };
+    presets.appendChild(reset);
+    box.appendChild(presets);
+    var hint = document.createElement('div');
+    hint.className = 'hint';
+    hint.textContent = t('Drag points (end points move vertically), click the grid to add, double-click a point to remove. Master applies before R/G/B; export renders the same tone tables.');
+    box.appendChild(hint);
   }
 
   // ---------- text style (文本样式 / 花字) ----------
@@ -4265,7 +4567,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     var visualGrid = document.createElement('div');
     visualGrid.className = 'lib-grid';
     Object.keys(EFFECT_CATALOG).forEach(function(type){
-      if (type === 'adjust' || type === 'typewriter') return; // Properties-owned (Adjust panel / text panel)
+      if (type === 'adjust' || type === 'curves' || type === 'typewriter') return; // Properties-owned (Adjust / Curves / text panel)
       visualGrid.appendChild(makeLibraryChip('effect', type, effectLabel(type)));
     });
     box.appendChild(visualGrid);
@@ -4981,6 +5283,9 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         edges.push(clip.start + clip.duration);
       });
     });
+    // Markers (beat markers included) are snap targets too — trimming and
+    // moving onto the beat is the 卡点 gesture.
+    timelineMarkers().forEach(function(marker){ edges.push(marker.time); });
     return edges;
   }
 

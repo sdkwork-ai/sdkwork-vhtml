@@ -322,7 +322,7 @@ export type TransitionType =
 export const VISUAL_EFFECT_TYPES: ReadonlySet<string> = new Set([
   'blur', 'brightness', 'contrast', 'saturate', 'grayscale', 'sepia', 'invert',
   'hue-rotate', 'drop-shadow', 'glow', 'grain', 'vignette', 'tint',
-  'color-overlay', 'chroma-key', 'rounded', 'mask', 'adjust', 'typewriter', 'filter', 'css',
+  'color-overlay', 'chroma-key', 'rounded', 'border', 'mask', 'adjust', 'curves', 'typewriter', 'filter', 'css',
 ]);
 
 /**

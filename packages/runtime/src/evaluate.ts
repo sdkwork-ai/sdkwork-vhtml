@@ -559,9 +559,118 @@ export function adjustFilterUrl(values: AdjustValues): string | undefined {
     );
   }
   if (!primitives.length) return undefined;
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg'><filter id='a' color-interpolation-filters='sRGB'>${primitives.join('')}</filter></svg>`;
+  return svgFilterUrl(primitives.join(''), 'a');
+}
+
+/**
+ * Wrap SVG filter primitives in a self-contained data-URI `url()` so the
+ * preview stage, the Studio WYSIWYG view and the sampled frames share the
+ * exact primitive chain (sRGB interpolation, CSS-string safe encoding).
+ */
+function svgFilterUrl(primitives: string, id: string): string {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg'><filter id='${id}' color-interpolation-filters='sRGB'>${primitives}</filter></svg>`;
   const encoded = svg.replace(/%/g, '%25').replace(/</g, '%3C').replace(/>/g, '%3E').replace(/#/g, '%23').replace(/ /g, '%20').replace(/"/g, '%22');
-  return `url("data:image/svg+xml;utf8,${encoded}#a")`;
+  return `url("data:image/svg+xml;utf8,${encoded}#${id}")`;
+}
+
+export type CurvePoint = [number, number];
+
+/**
+ * Parse a curve param ("x,y;x,y;…", unit range) into sorted points with the
+ * endpoints pinned to x=0 and x=1; `undefined` when it is not a curve.
+ */
+export function parseCurvePoints(value: string | number | boolean | undefined): CurvePoint[] | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined;
+  const points: CurvePoint[] = [];
+  for (const pair of value.split(';')) {
+    const parts = pair.split(',').map((part) => Number(part.trim()));
+    if (parts.length !== 2 || !Number.isFinite(parts[0]) || !Number.isFinite(parts[1])) continue;
+    points.push([clamp(parts[0]!, 0, 1), clamp(parts[1]!, 0, 1)]);
+  }
+  if (points.length < 2) return undefined;
+  points.sort((a, b) => a[0] - b[0]);
+  if (points[0]![0] > 0) points.unshift([0, points[0]![1]]);
+  if (points[points.length - 1]![0] < 1) points.push([1, points[points.length - 1]![1]]);
+  return points;
+}
+
+/**
+ * Monotone cubic (Fritsch–Carlson) interpolation through curve points: the
+ * classic grading-curve feel — smooth S-curves, no overshoot between points.
+ */
+export function sampleCurve(points: CurvePoint[], x: number): number {
+  const n = points.length;
+  if (n === 0) return clamp(x, 0, 1);
+  if (n === 1 || x <= points[0]![0]) return points[0]![1];
+  if (x >= points[n - 1]![0]) return points[n - 1]![1];
+  const h: number[] = [];
+  const delta: number[] = [];
+  for (let i = 0; i < n - 1; i++) {
+    const dx = points[i + 1]![0] - points[i]![0];
+    h.push(dx);
+    delta.push(dx > 0 ? (points[i + 1]![1] - points[i]![1]) / dx : 0);
+  }
+  const m: number[] = new Array(n).fill(0);
+  m[0] = delta[0]!;
+  m[n - 1] = delta[n - 2]!;
+  for (let i = 1; i < n - 1; i++) m[i] = delta[i - 1]! * delta[i]! <= 0 ? 0 : (delta[i - 1]! + delta[i]!) / 2;
+  for (let i = 0; i < n - 1; i++) {
+    if (delta[i] === 0) {
+      m[i] = 0;
+      m[i + 1] = 0;
+      continue;
+    }
+    const a = m[i]! / delta[i]!;
+    const b = m[i + 1]! / delta[i]!;
+    const s = a * a + b * b;
+    if (s > 9) {
+      const tau = 3 / Math.sqrt(s);
+      m[i] = tau * a * delta[i]!;
+      m[i + 1] = tau * b * delta[i]!;
+    }
+  }
+  let i = 0;
+  while (i < n - 2 && x > points[i + 1]![0]) i++;
+  const t = h[i]! > 0 ? (x - points[i]![0]) / h[i]! : 0;
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const h00 = 2 * t3 - 3 * t2 + 1;
+  const h10 = t3 - 2 * t2 + t;
+  const h01 = -2 * t3 + 3 * t2;
+  const h11 = t3 - t2;
+  return clamp(h00 * points[i]![1] + h10 * h[i]! * m[i]! + h01 * points[i + 1]![1] + h11 * h[i]! * m[i + 1]!, 0, 1);
+}
+
+const CURVE_TABLE_STEPS = 32;
+
+/**
+ * `curves` effect → one feComponentTransfer with per-channel tables sampled
+ * from the master (RGB) curve composed with the optional R/G/B curves.
+ * Identity curves produce no filter at all.
+ */
+export function curvesFilterUrl(effect: Effect): string | undefined {
+  const master = parseCurvePoints(effect.params['master']);
+  const channels: Record<'r' | 'g' | 'b', CurvePoint[] | undefined> = {
+    r: parseCurvePoints(effect.params['r']),
+    g: parseCurvePoints(effect.params['g']),
+    b: parseCurvePoints(effect.params['b']),
+  };
+  if (!master && !channels.r && !channels.g && !channels.b) return undefined;
+  const tables: Record<'r' | 'g' | 'b', string[]> = { r: [], g: [], b: [] };
+  let identity = true;
+  for (let step = 0; step <= CURVE_TABLE_STEPS; step++) {
+    const x = step / CURVE_TABLE_STEPS;
+    const graded = master ? sampleCurve(master, x) : x;
+    for (const key of ['r', 'g', 'b'] as const) {
+      const curve = channels[key];
+      const value = curve ? sampleCurve(curve, graded) : graded;
+      if (Math.abs(value - x) > 1e-4) identity = false;
+      tables[key].push(String(Math.round(value * 10_000) / 10_000));
+    }
+  }
+  if (identity) return undefined;
+  const primitives = `<feComponentTransfer><feFuncR type='table' tableValues='${tables.r.join(' ')}'/><feFuncG type='table' tableValues='${tables.g.join(' ')}'/><feFuncB type='table' tableValues='${tables.b.join(' ')}'/></feComponentTransfer>`;
+  return svgFilterUrl(primitives, 'c');
 }
 
 /**
@@ -710,6 +819,17 @@ function collectEffects(
       }
       case 'rounded': {
         borderRadius = effectString(effect, ['radius', 'value'], '24px');
+        break;
+      }
+      case 'border': {
+        // PIP / sticker frame drawn inside the layer box (follows `rounded`).
+        const width = Math.max(0, effectNumber(effect, ['width', 'size'], 6));
+        if (width > 0) layer.css['border'] = `${cssUnit(width)} solid ${effectString(effect, ['color'], '#ffffff')}`;
+        break;
+      }
+      case 'curves': {
+        const url = curvesFilterUrl(effect);
+        if (url) layer.filterRaw.push(url);
         break;
       }
       case 'mask': {
