@@ -279,6 +279,7 @@ class ProjectValidator {
         add(track.id, 'lane');
         for (const clip of track.clips) add(clip.id, 'clip');
         for (const transition of track.transitions) add(transition.id, 'transition');
+        for (const effect of track.effects ?? []) if (effect.id) add(effect.id, 'effect');
         for (const clip of track.clips) {
           for (const effect of clip.effects) if (effect.id) add(effect.id, 'effect');
           for (const effect of clip.audioEffects) if (effect.id) add(effect.id, 'audio-effect');
@@ -496,6 +497,31 @@ class ProjectValidator {
     const clipIds = new Set(track.clips.map((clip) => clip.id));
     if (clipIds.size !== track.clips.length) {
       this.error(ErrorCode.VALIDATION_DUPLICATE_ID, `lane "${track.id}" contains duplicate clip ids`, { objectId: track.id });
+    }
+    const laneEffects = track.effects ?? [];
+    if (laneEffects.length && track.type !== 'video' && track.type !== 'overlay') {
+      this.error(
+        ErrorCode.VALIDATION_INCOMPATIBLE_TRACK,
+        `lane "${track.id}" carries adjustment-layer effects but is a ${track.type} lane; lane effects apply to video/overlay lanes only`,
+        { objectId: track.id },
+      );
+    }
+    for (const effect of laneEffects) {
+      if (!effect.enabled) continue;
+      if (!VISUAL_EFFECT_TYPES.has(effect.type) && !this.declaredTypes(project, 'effect').has(effect.type)) {
+        this.warn(
+          ErrorCode.RENDER_UNSUPPORTED_FEATURE,
+          `unknown visual effect "${effect.type}" on lane "${track.id}"; declare it with <extension kind="effect" base="..."> or replace it`,
+          { objectId: track.id },
+        );
+      }
+      if (effect.type === 'chroma-key' || effect.type === 'mask') {
+        this.warn(
+          ErrorCode.RENDER_UNSUPPORTED_FEATURE,
+          `"${effect.type}" is a per-clip effect; the adjustment layer on lane "${track.id}" ignores it`,
+          { objectId: track.id },
+        );
+      }
     }
     for (const clip of track.clips) {
       this.validateClip(project, timeline, track, clip);

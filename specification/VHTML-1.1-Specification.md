@@ -271,6 +271,14 @@ VHTML 1.1 不承诺：
 - 转场窗口 MUST 是两个 Clip 的重叠区间；`duration` 不得大于重叠。
 - 同 Lane 上允许重叠以获得叠加或转场；Validator 不做“禁止重叠”假设。
 - Caption Lane 只能包含 `<cue>`。
+- **调节层（Lane 级 `<effect>`）**：`video`/`overlay` Lane 可直接包含 `<effect>` 子元素
+  （类型与参数同 §3.12）。其语义是作用于“该 Lane 及其下所有 Lane 合成后的画面”，
+  即 NLE 的调节层。参考实现在该 Lane 的 z 带顶端（`order` 带 + 999）渲染一个
+  `backdrop-filter` 宿主：滤镜类效果合成为一条 backdrop-filter 列表，`vignette`/
+  `grain`/`tint` 等叠加层绘制在该区域之上；Caption Lane（z ≥ 900000）始终在其上且不受
+  影响。嵌套时间线中的 Lane 级效果随复合 Clip 折叠进父带，仍位于该组之上。
+  `chroma-key`/`mask` 为 Clip 级显隐效果，出现在 Lane 上时 Validator 发出 warning 并被
+  忽略；在 `audio`/`caption`/`data` Lane 上声明 `<effect>` 为 error。
 
 ### 3.12 Effect
 
@@ -311,7 +319,11 @@ VHTML 1.1 不承诺：
 ```
 
 - `property` 规范属性：`opacity/x/y/scale/scaleX/scaleY/rotate/blur/brightness/
-  contrast/saturate/grayscale/sepia/invert/hueRotate/volume/pan`。
+  contrast/saturate/grayscale/sepia/invert/hueRotate/volume/pan`，以及调节通道
+  `adjust.<param>`（`param` 取 §3.12 `adjust` 的 11 个滑杆名，值为滑杆单位
+  −100..100）：`compose=replace` 覆盖该 Clip `adjust` 效果的对应参数，`add` 在其上
+  偏移；Clip 上没有 `adjust` 效果时，关键帧通道按全零基准生效（渲染器 MUST 合成一个隐式
+  `adjust`）。
 - 带 `selector`（或项目级 `target`）时，动画作用于 Clip 内/Stage 内的 HTML 元素；
   否则作用于 Clip 层。
 - 时间基准 `time-base="clip|project"`；嵌套 Clip 默认 `clip`，项目级默认 `project`。

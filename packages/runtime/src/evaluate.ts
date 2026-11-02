@@ -15,8 +15,10 @@ import {
   findTimeline,
   resolveReference,
   AUDIO_EFFECT_TYPES,
+  ADJUST_PARAMS,
   TRANSITION_TYPES,
   VISUAL_EFFECT_TYPES,
+  type AdjustParam,
   type Animation,
   type CaptionClip,
   type Clip,
@@ -143,7 +145,17 @@ export interface FrameState {
   clips: ClipFrameState[];
   globalStyles: ElementAnimationState[];
   transitionOverlays: TransitionOverlayState[];
+  /** Adjustment layers: lane-level effects composited over the lane and everything below it. */
+  trackEffects: TrackEffectState[];
   issues: string[];
+}
+
+export interface TrackEffectState {
+  trackId: string;
+  /** CSS filter list applied as a backdrop filter to the composited picture below. */
+  filter: string;
+  overlays: EffectOverlay[];
+  zIndex: number;
 }
 
 export interface EvaluateOptions {
@@ -177,6 +189,8 @@ interface LayerAccumulator {
   clipPath?: string;
   borderRadius?: string;
   css: Record<string, string>;
+  /** Keyframed `adjust.<param>` channels (slider units) composed over the effect's own params. */
+  adjust: Partial<Record<AdjustParam, { value: number; add: boolean }>>;
 }
 
 const DEFAULT_STYLE: ClipStyleState = {
@@ -260,6 +274,16 @@ function applyAnimatedProperty(
   const key = canonicalProperty(property);
   const numeric = typeof value === 'number' ? value : parseNumericValue(String(value))?.number;
   const additive = compose === 'add' || compose === 'accumulate';
+  if (key.startsWith('adjust.')) {
+    // Keyframed 调节 sliders: `adjust.temperature` etc. carry slider units
+    // (−100..100); replace overrides the effect param, add offsets it.
+    const name = key.slice('adjust.'.length) as AdjustParam;
+    if (!ADJUST_PARAMS.includes(name) || numeric === undefined) return false;
+    const existing = layer.adjust[name];
+    if (additive && existing) layer.adjust[name] = { value: existing.value + numeric, add: existing.add };
+    else layer.adjust[name] = { value: numeric, add: additive };
+    return true;
+  }
   switch (key) {
     case 'x':
       if (numeric !== undefined) layer.x = additive ? layer.x + numeric : numeric;
@@ -395,6 +419,7 @@ function sampleElementStyles(
       extraTransform: [],
       filterRaw: [],
       css: {},
+      adjust: {},
     };
     let opacityTouched = false;
     let transformTouched = false;
@@ -537,9 +562,18 @@ export function adjustFilterUrl(values: AdjustValues): string | undefined {
   return `url("data:image/svg+xml;utf8,${encoded}#a")`;
 }
 
-/** Read an `adjust` effect's sliders as unit values (−1..1, one-sided ones 0..1). */
-export function adjustValues(effect: Effect): AdjustValues {
-  const unit = (name: string, min: number): number => clamp(effectNumber(effect, [name], 0), min, 100) / 100;
+/**
+ * Read an `adjust` effect's sliders as unit values (−1..1, one-sided ones
+ * 0..1). Keyframed `adjust.<param>` channels override (replace) or offset
+ * (add) the authored slider before normalisation.
+ */
+export function adjustValues(effect: Effect, keyframed: LayerAccumulator['adjust'] = {}): AdjustValues {
+  const unit = (name: AdjustParam, min: number): number => {
+    const authored = effectNumber(effect, [name], 0);
+    const channel = keyframed[name];
+    const composed = channel ? (channel.add ? authored + channel.value : channel.value) : authored;
+    return clamp(composed, min, 100) / 100;
+  };
   return {
     brightness: unit('brightness', -100),
     contrast: unit('contrast', -100),
@@ -572,7 +606,8 @@ function vignetteOverlay(amount: number): EffectOverlay {
 }
 
 function collectEffects(
-  clip: Clip,
+  declaredEffects: Effect[],
+  ownerLabel: string,
   layer: LayerAccumulator,
   extensions: Project['extensions'] | undefined,
   aspect: number,
@@ -592,8 +627,23 @@ function collectEffects(
   let maskImage: string | undefined;
   let maskComposite: string | undefined;
   const issues: string[] = [];
+  // NLE 调节 panel: sliders centred on 0. Brightness/contrast/saturation
+  // ride the CSS filter multipliers (±50 %, ±50 %, 0..2×); the colour
+  // matrix, tone table and unsharp kernel share one SVG filter; vignette
+  // and grain reuse the dedicated overlay generators.
+  const applyAdjust = (effect: Effect): void => {
+    const values = adjustValues(effect, layer.adjust);
+    if (values.brightness !== 0) layer.brightness *= 1 + values.brightness * 0.5;
+    if (values.contrast !== 0) layer.contrast *= 1 + values.contrast * 0.5;
+    if (values.saturation !== 0) layer.saturate *= 1 + values.saturation;
+    const svgFilter = adjustFilterUrl(values);
+    if (svgFilter) layer.filterRaw.push(svgFilter);
+    if (values.vignette > 0) overlays.push(vignetteOverlay(values.vignette * 0.85));
+    if (values.grain > 0) overlays.push(grainOverlay(values.grain * 0.35, 3));
+  };
+  let adjustApplied = false;
 
-  for (const declared of clip.effects) {
+  for (const declared of declaredEffects) {
     if (!declared.enabled) continue;
     const effect = effectiveEffect(declared, 'effect', VISUAL_EFFECT_TYPES, extensions);
     switch (effect.type) {
@@ -640,18 +690,8 @@ function collectEffects(
         break;
       }
       case 'adjust': {
-        // NLE 调节 panel: sliders centred on 0. Brightness/contrast/saturation
-        // ride the CSS filter multipliers (±50 %, ±50 %, 0..2×); the colour
-        // matrix, tone table and unsharp kernel share one SVG filter; vignette
-        // and grain reuse the dedicated overlay generators.
-        const values = adjustValues(effect);
-        if (values.brightness !== 0) layer.brightness *= 1 + values.brightness * 0.5;
-        if (values.contrast !== 0) layer.contrast *= 1 + values.contrast * 0.5;
-        if (values.saturation !== 0) layer.saturate *= 1 + values.saturation;
-        const svgFilter = adjustFilterUrl(values);
-        if (svgFilter) layer.filterRaw.push(svgFilter);
-        if (values.vignette > 0) overlays.push(vignetteOverlay(values.vignette * 0.85));
-        if (values.grain > 0) overlays.push(grainOverlay(values.grain * 0.35, 3));
+        applyAdjust(effect);
+        adjustApplied = true;
         break;
       }
       case 'tint':
@@ -729,8 +769,13 @@ function collectEffects(
         break;
       }
       default:
-        issues.push(`unsupported visual effect "${effect.type}" on clip "${clip.id}"`);
+        issues.push(`unsupported visual effect "${effect.type}" on ${ownerLabel}`);
     }
+  }
+  if (!adjustApplied && Object.keys(layer.adjust).length) {
+    // Keyframed adjust channels on a clip whose sliders all sit at 0 (so no
+    // adjust effect is authored): evaluate them over an implicit zero base.
+    applyAdjust({ id: 'adjust-keyframed', type: 'adjust', params: {}, enabled: true });
   }
   return { overlays, chromaKey, borderRadius, clipPath, maskImage, maskComposite, issues };
 }
@@ -768,6 +813,7 @@ function sampleClipLayer(
     extraTransform: [],
     filterRaw: [],
     css: {},
+    adjust: {},
   };
   const layerValues: Record<string, string | number> = {};
   const layerAnimations: Animation[] = [];
@@ -785,7 +831,7 @@ function sampleClipLayer(
     if (animation.property === 'volume' || animation.property === 'pan') continue;
     applyAnimatedProperty(layer, animation.property, sample.value, animation.compose);
   }
-  const effects = collectEffects(clip, layer, extensions, aspect);
+  const effects = collectEffects(clip.effects, `clip "${clip.id}"`, layer, extensions, aspect);
   const style = buildLayerStyle(layer, trackOpacity);
   style.overlays = effects.overlays;
   style.chromaKey = effects.chromaKey;
@@ -1001,6 +1047,33 @@ function applyTransitionVisual(
   }
 }
 
+/**
+ * Adjustment layer (调节层): a lane's own effects composited over the lane and
+ * everything painted below it. Filter-type effects become one backdrop filter
+ * list; vignette/grain/tint overlays paint on top of that region. Per-clip
+ * reveal effects (chroma-key, mask) have no lane meaning and are skipped.
+ */
+function laneEffectState(
+  track: Track,
+  zIndex: number,
+  extensions: Project['extensions'] | undefined,
+  aspect: number,
+  issues: string[],
+): TrackEffectState | undefined {
+  const declared = (track.effects ?? []).filter((effect) => effect.enabled && effect.type !== 'chroma-key' && effect.type !== 'mask');
+  if (!declared.length) return undefined;
+  const layer: LayerAccumulator = {
+    x: 0, y: 0, scaleX: 1, scaleY: 1, rotate: 0, opacity: 1,
+    blur: 0, brightness: 1, contrast: 1, saturate: 1, grayscale: 0, sepia: 0, invert: 0, hueRotate: 0,
+    dropShadow: [], extraTransform: [], filterRaw: [], css: {}, adjust: {},
+  };
+  const effects = collectEffects(declared, `lane "${track.id}"`, layer, extensions, aspect);
+  issues.push(...effects.issues);
+  const style = buildLayerStyle(layer, 1);
+  if (style.filter === 'none' && !effects.overlays.length) return undefined;
+  return { trackId: track.id, filter: style.filter, overlays: effects.overlays, zIndex };
+}
+
 export function evaluateFrame(
   project: Project,
   time: Rational,
@@ -1022,6 +1095,7 @@ export function evaluateFrame(
       clips: [],
       globalStyles: [],
       transitionOverlays: [],
+      trackEffects: [],
       issues: ['project has no timeline'],
     };
   }
@@ -1030,6 +1104,8 @@ export function evaluateFrame(
   const states = new Map<string, ClipFrameState>();
   const audioStates: ClipFrameState[] = [];
   const transitionOverlays: TransitionOverlayState[] = [];
+  const trackEffects: TrackEffectState[] = [];
+  const aspect = project.composition.width / project.composition.height;
   const trackOpacity = new Map<string, number>();
   for (const track of timeline.tracks) trackOpacity.set(track.id, track.opacity);
 
@@ -1043,6 +1119,12 @@ export function evaluateFrame(
     const isVisual = track.type === 'video' || track.type === 'overlay' || isCaption;
     const baseOrder = visualOrder * 1000;
     if (isVisual) visualOrder += 1;
+    if (track.type === 'video' || track.type === 'overlay') {
+      // The lane's adjustment layer sits at the top of its z band: above its
+      // own clips, below the next lane, never above captions.
+      const laneState = laneEffectState(track, baseOrder + 999, project.extensions, aspect, issues);
+      if (laneState) trackEffects.push(laneState);
+    }
     for (const clip of track.clips) {
       const active = gte(time, clip.start) && lt(time, clipEnd(clip)) && clip.enabled;
       if (!active) continue;
@@ -1088,6 +1170,11 @@ export function evaluateFrame(
           states.set(subState.clipId, subState);
         }
         transitionOverlays.push(...subFrame.transitionOverlays);
+        for (const laneState of subFrame.trackEffects) {
+          // Nested lanes flatten into the compound clip's band exactly like
+          // their clips do; the layer keeps riding above that flattened group.
+          trackEffects.push({ ...laneState, zIndex: baseOrder + clip.z + 999 });
+        }
         issues.push(...subFrame.issues);
         continue;
       }
@@ -1105,7 +1192,7 @@ export function evaluateFrame(
         track.opacity,
         issues,
         project.extensions,
-        project.composition.width / project.composition.height,
+        aspect,
       );
       style.zIndex = isCaption ? 900_000 + clip.z : baseOrder + clip.z;
       const state: ClipFrameState = {
@@ -1218,6 +1305,7 @@ export function evaluateFrame(
     clips,
     globalStyles,
     transitionOverlays,
+    trackEffects,
     issues,
   };
 }

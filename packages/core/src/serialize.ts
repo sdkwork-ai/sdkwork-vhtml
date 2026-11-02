@@ -559,6 +559,7 @@ class Serializer {
     );
     for (const clip of track.clips) this.writeClip(clip);
     for (const transition of track.transitions) this.writeTransition(transition);
+    for (const effect of track.effects ?? []) this.writeEffect(effect, 'effect');
     this.close('</lane>');
   }
 

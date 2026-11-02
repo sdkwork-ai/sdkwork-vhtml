@@ -81,6 +81,10 @@ for (const audio of document.querySelectorAll<HTMLAudioElement>('audio[data-audi
 
 const transitionContainer = stage.querySelector<HTMLElement>('.vhtml-transition-overlays');
 const transitionElements = new Map<string, HTMLElement>();
+const trackFxElements = new Map<string, HTMLElement>();
+for (const element of stage.querySelectorAll<HTMLElement>('.vhtml-track-fx[data-track-id]')) {
+  trackFxElements.set(element.dataset.trackId!, element);
+}
 const trackedStyles = new WeakMap<Element, Set<string>>();
 const trackedTargets = new Set<Element>();
 const trackCaptionStyle = new Map<string, string>();
@@ -224,9 +228,15 @@ function applyClipStyle(layer: HTMLElement, state: ClipFrameState): void {
   if (style.css) {
     for (const [property, value] of Object.entries(style.css)) setTracked(layer, property, value);
   }
-  const slots = layer.querySelectorAll<HTMLElement>('.vhtml-fx-slot');
-  slots.forEach((slot, index) => {
-    const overlay = style.overlays[index];
+  applyOverlaySlots(layer, style.overlays);
+  // Element-scoped animations are applied relative to the scene root.
+  const sceneRoot = layer.querySelector<HTMLElement>('.vhtml-scene-root') ?? layer;
+  applyElementStyles(sceneRoot, state.elementStyles);
+}
+
+function applyOverlaySlots(container: HTMLElement, overlays: ClipFrameState['style']['overlays']): void {
+  container.querySelectorAll<HTMLElement>(':scope > .vhtml-fx-slot').forEach((slot, index) => {
+    const overlay = overlays[index];
     if (!overlay) {
       slot.style.opacity = '0';
       slot.style.background = 'transparent';
@@ -236,9 +246,6 @@ function applyClipStyle(layer: HTMLElement, state: ClipFrameState): void {
     slot.style.opacity = String(overlay.opacity);
     slot.style.mixBlendMode = overlay.blendMode;
   });
-  // Element-scoped animations are applied relative to the scene root.
-  const sceneRoot = layer.querySelector<HTMLElement>('.vhtml-scene-root') ?? layer;
-  applyElementStyles(sceneRoot, state.elementStyles);
 }
 
 function parseHexColor(color: string): [number, number, number] | undefined {
@@ -411,6 +418,23 @@ async function applyFrame(state: FrameState): Promise<void> {
   }
 
   applyElementStyles(stage, state.globalStyles);
+
+  // Adjustment layers: one host per lane, backdrop-filtering everything
+  // painted below its z position; overlay slots paint on top of that region.
+  const activeLanes = new Map(state.trackEffects.map((lane) => [lane.trackId, lane]));
+  for (const [trackId, element] of trackFxElements) {
+    const lane = activeLanes.get(trackId);
+    if (!lane) {
+      element.style.display = 'none';
+      continue;
+    }
+    element.style.display = 'block';
+    element.style.zIndex = String(lane.zIndex);
+    const filter = lane.filter === 'none' ? 'none' : lane.filter;
+    element.style.setProperty('backdrop-filter', filter);
+    element.style.setProperty('-webkit-backdrop-filter', filter);
+    applyOverlaySlots(element, lane.overlays);
+  }
 
   if (transitionContainer) {
     const activeIds = new Set(state.transitionOverlays.map((overlay) => overlay.id));
@@ -689,6 +713,16 @@ const hostApi = {
         Object.assign(clip, patch);
         return seek(currentTime, currentFrame);
       }
+    }
+    return Promise.resolve(undefined);
+  },
+  /** Same contract as previewClip for lane-level fields (adjustment layers). */
+  previewTrack(trackId: string, patch: Record<string, unknown>): Promise<unknown> {
+    for (const timeline of project.timelines) {
+      const track = timeline.tracks.find((candidate) => candidate.id === trackId);
+      if (!track) continue;
+      Object.assign(track, patch);
+      return seek(currentTime, currentFrame);
     }
     return Promise.resolve(undefined);
   },

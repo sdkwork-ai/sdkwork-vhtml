@@ -225,6 +225,22 @@ Select a clip to edit everything the model supports:
   release as one undoable edit. Colour params elsewhere (chroma-key, tint,
   drop-shadow…) gain a native swatch plus an **eyedropper** that samples any
   pixel on screen (EyeDropper API, Chromium).
+- **Keyframed adjust**: every slider carries a ◇ diamond — click it to start
+  an `adjust.<param>` keyframe track at the playhead (CapCut semantics: the
+  first keyframe holds across the clip; ◆ at the playhead removes that
+  keyframe, elsewhere adds one). Once a slider is keyframed, dragging it
+  writes/updates the keyframe at the playhead (live preview included), the
+  readout shows the sampled value, and the diamonds appear on the clip like
+  any other keyframe track. A keyframed slider works even when the base
+  effect is absent (the runtime evaluates the channel over a zero base).
+- **Adjustment layer (调节层)**: the ◐ button on a video/overlay lane header
+  (or *Adjustment layer…* in the lane menu) opens a lane panel with the same
+  looks and sliders plus a list for other lane effects (blur, tint, vignette,
+  grain…). Lane effects are normative `<lane><effect>` children: the runtime
+  renders them as a backdrop filter at the top of the lane's z band, so they
+  grade this lane **and every lane below it** while captions stay above and
+  untouched — the CapCut adjustment-layer semantics. The lane header shows an
+  **FX** badge while a layer is active; *Remove adjustment layer* clears it.
 - **Text style (文本样式)**: caption clips expose structured typography —
   font family (suggestions include the project's font assets), size, bold,
   italic, colour, stroke (width + colour with `paint-order: stroke fill`),
@@ -253,6 +269,10 @@ effect and transition as draggable chips.
   every selected visual clip).
 - Chips come straight from the runtime catalogs, so a new built-in effect type
   appears in the library automatically (guarded by unit tests).
+- **Animation presets** (entrance / exit / loop) apply to any visual clip
+  **and to caption cues** — the CapCut text-animation workflow (fade, slide,
+  zoom, bounce in/out, pulse, sway); caption clips also get the Keyframes
+  section in Properties to edit those tracks.
 
 ## Assets
 
@@ -302,8 +322,10 @@ Properties afterwards.
 
 **⚙ Canvas** (header) opens the project settings: aspect-ratio presets
 (16:9, 9:16, 1:1, 4:5, 2.35:1, 4K), explicit width/height, frame rate
-(24/25/30/50/60) and background color. Everything applies as one
-`composition.set` edit — clips and authored HTML keep their layout.
+(24/25/30/50/60), background color and **colour space** (sRGB / Display P3 /
+Rec. 709 — the normative `composition color-space`, carried into export).
+Everything applies as one `composition.set` edit — clips and authored HTML
+keep their layout.
 
 ## Help
 

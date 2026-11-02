@@ -308,6 +308,12 @@ body.fullscreen-stage .inspector{display:none}
 .caption-style-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .caption-style-grid .full{grid-column:1/-1}
 .adjust-row{display:grid;grid-template-columns:minmax(64px,.8fr) minmax(0,2fr) 40px;gap:8px;align-items:center;font-size:11px}
+.adjust-row.keyable{grid-template-columns:minmax(64px,.8fr) minmax(0,2fr) 40px 22px}
+.adjust-row .kf-toggle{padding:0;height:20px;width:22px;line-height:18px;font-size:12px;border-radius:5px;color:var(--muted)}
+.adjust-row .kf-toggle.on{color:var(--accent2);border-color:var(--accent2)}
+.adjust-row .kf-toggle.at{background:#1d1840}
+.lane-fx-badge{display:inline-block;margin-left:5px;padding:0 5px;font-size:9px;letter-spacing:.08em;border-radius:4px;background:#2a1f4a;color:#c7b8ff;border:1px solid #4a3a80;vertical-align:1px}
+.lane-label.focused{box-shadow:inset 3px 0 0 var(--accent2)}
 .adjust-row label{color:var(--muted);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .adjust-row label.touched{color:var(--text)}
 .adjust-row input[type=range]{width:100%;min-width:0;padding:0;height:18px;accent-color:var(--accent)}
@@ -494,7 +500,8 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       <div class="field"><label>Height</label><input id="set-height" type="number" min="16" /></div>
       <div class="field"><label>Frame rate</label><select id="set-fps"><option value="24/1">24 fps</option><option value="24000/1001">23.976 fps (film)</option><option value="25/1">25 fps</option><option value="30000/1001">29.97 fps (NTSC)</option><option value="30/1">30 fps</option><option value="50/1">50 fps</option><option value="60000/1001">59.94 fps (NTSC)</option><option value="60/1">60 fps</option></select></div>
       <div class="field"><label>Background</label><input id="set-background" type="text" placeholder="#000000" /></div>
-      <div class="field full element-note">Applies to the composition (composition.set): canvas size, frame rate and background. Clips and scenes keep their authored layout.</div>
+      <div class="field"><label data-i18n="Colour space">Colour space</label><select id="set-colorspace"><option value="srgb">sRGB (web / mobile)</option><option value="display-p3">Display P3 (wide gamut)</option><option value="rec709">Rec. 709 (broadcast)</option></select></div>
+      <div class="field full element-note">Applies to the composition (composition.set): canvas size, frame rate, background and colour space. Clips and scenes keep their authored layout.</div>
     </div>
     <div class="modal-foot"><button id="settings-cancel">Cancel</button><button id="settings-save" class="primary">Apply</button></div>
   </div>
@@ -560,7 +567,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 <script>
 (function(){
   'use strict';
-  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, timelineStack:[], attributeClipboard:null, assetSearch:'', laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
+  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, timelineStack:[], attributeClipboard:null, assetSearch:'', laneFocus:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
   var el = function(id){ return document.getElementById(id); };
   var stage = el('stage');
   var tracksEl = el('tracks');
@@ -616,6 +623,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   function selectOnly(id){
     state.selected = id || null;
     state.selection = id ? [id] : [];
+    state.laneFocus = null;
   }
   function toggleSelection(id, additive){
     if (!additive){ selectOnly(id); return; }
@@ -817,9 +825,19 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       row.appendChild(resize);
       var label = document.createElement('div');
       label.className = 'lane-label';
-      label.innerHTML = '<b>' + escapeHtml(lane.name || lane.id) + '</b><small>' + lane.type + ' · ' + lane.clips.length + ' clip(s)</small>';
+      var laneFx = (lane.effects || []).filter(function(fx){ return fx.enabled !== false; });
+      label.innerHTML = '<b>' + escapeHtml(lane.name || lane.id) + (laneFx.length ? ' <span class="lane-fx-badge" title="' + escapeHtml(t('Adjustment layer active — grades this lane and every lane below')) + '">FX</span>' : '') + '</b><small>' + lane.type + ' · ' + lane.clips.length + ' clip(s)</small>';
+      if (state.laneFocus === lane.id) label.classList.add('focused');
       var tools = document.createElement('div');
       tools.className = 'lane-tools';
+      if (lane.type === 'video' || lane.type === 'overlay'){
+        var fxBtn = document.createElement('button');
+        fxBtn.textContent = '◐';
+        fxBtn.title = t('Adjustment layer (调节层): colour-grade this lane and every lane below it');
+        fxBtn.className = laneFx.length ? 'on' : '';
+        fxBtn.onclick = function(event){ event.stopPropagation(); focusLaneAdjustment(lane.id); };
+        tools.appendChild(fxBtn);
+      }
       var muteBtn = document.createElement('button');
       muteBtn.textContent = 'M';
       muteBtn.title = 'Mute lane (mixer + export honor this)';
@@ -1155,6 +1173,14 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   }
 
   function renderProps(box){
+    if (state.laneFocus){
+      var focusLane = laneById(state.laneFocus);
+      if (focusLane && (focusLane.type === 'video' || focusLane.type === 'overlay')){
+        renderLaneAdjustmentPanel(box, focusLane);
+        return;
+      }
+      state.laneFocus = null;
+    }
     var found = selectedClip();
     if (!found){
       box.innerHTML = '<div class="inspector-empty">Select a clip on the timeline to edit timing, transform, opacity, audio and captions.<br><br><b>The model is the source of truth.</b> Drag the selected clip directly on the stage for WYSIWYG transform editing; the same values are written to the VHTML project.<br><br>Right-click clips, lanes and the ruler for the full editing menu (split, duplicate, speed, freeze, markers…).</div>';
@@ -1347,7 +1373,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     enableCheck.appendChild(document.createTextNode(' Clip enabled'));
     enableRow.appendChild(enableCheck);
     box.appendChild(enableRow);
-    if (visual) renderKeyframeSection(box, clip);
+    if (visual || clip.kind === 'caption') renderKeyframeSection(box, clip);
     if (visual) renderEffectsSection(box, clip);
     var transitions = (lane.transitions || []).filter(function(t){ return t.from === clip.id || t.to === clip.id; });
     if (transitions.length){
@@ -2119,7 +2145,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     ] },
   ];
   function applyAnimationPreset(clip, preset){
-    if (!isVisualClip(clip)) return toast(t('Animations need a visual clip'), true);
+    if (!isAnimatableClip(clip)) return toast(t('Animations need a visual or text clip'), true);
     if (clip.duration < 0.12) return toast(t('Clip is too short for an animation preset'), true);
     var edge = Math.min(0.45, clip.duration * 0.5);
     var duration = Number(clip.duration.toFixed(6));
@@ -2164,10 +2190,10 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   }
   function renderAnimationLibrary(box){
     var selected = selectedClip();
-    var target = selected && isVisualClip(selected.clip) ? selected.clip : null;
+    var target = selected && isAnimatableClip(selected.clip) ? selected.clip : null;
     var hint = document.createElement('div');
     hint.className = 'element-note';
-    hint.textContent = t('One-click entrance/exit/loop animations for the selected clip. Transform presets offset the authored transform; applying replaces existing tracks on the same property.');
+    hint.textContent = t('One-click entrance/exit/loop animations for the selected clip (text cues included). Transform presets offset the authored transform; applying replaces existing tracks on the same property.');
     box.appendChild(hint);
     [
       ['in', t('Entrance (入场)')],
@@ -2546,6 +2572,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     if (property === 'opacity') return clip.opacity;
     if (property === 'volume') return clip.volume;
     if (property === 'pan') return clip.pan;
+    if (property.indexOf('adjust.') === 0) return adjustParamsOf(clip)[property.slice(7)] || 0;
     return clip.transform[property];
   }
 
@@ -2561,6 +2588,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 
   function animationLabel(property){
     var labels = { opacity:'Opacity', x:'Position X', y:'Position Y', scaleX:'Scale X', scaleY:'Scale Y', rotate:'Rotation', volume:'Volume', pan:'Pan' };
+    if (property.indexOf('adjust.') === 0 && ADJUST_LABELS[property.slice(7)]) return t('Adjust') + ' · ' + t(ADJUST_LABELS[property.slice(7)]);
     return labels[property] || property;
   }
 
@@ -2817,8 +2845,19 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     title.className = 'section-title';
     title.textContent = t('Effects');
     box.appendChild(title);
-    (clip.effects || []).forEach(function(fx){
-      if (fx.type === 'mask' || fx.type === 'adjust') return; // edited by the dedicated sections
+    renderEffectRows(box, clip.effects || [], function(nextEffects){
+      return edit([{ op:'clip.set', clipId:clip.id, props:{ effects:nextEffects } }]).catch(function(){});
+    }, { skipTypes: ['mask', 'adjust'], addCatalog: true, onAdd: applyEffectToSelection });
+  }
+
+  // Generic effect list editor shared by clips (clip.set) and lanes
+  // (track.set · adjustment layer): enable/remove per effect, typed param
+  // rows with colour swatches, and an add-effect select.
+  function renderEffectRows(box, effects, commitEffects, options){
+    options = options || {};
+    var skip = options.skipTypes || [];
+    effects.forEach(function(fx){
+      if (skip.indexOf(fx.type) >= 0) return; // edited by dedicated sections
       var head = document.createElement('div');
       head.className = 'transition-row';
       head.innerHTML = '<b>' + escapeHtml(effectLabel(fx.type)) + '</b><small style="margin-left:6px;opacity:.6">' + escapeHtml(fx.type) + '</small>';
@@ -2826,20 +2865,18 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       enable.textContent = fx.enabled ? 'On' : 'Off';
       enable.style.marginLeft = 'auto';
       enable.onclick = function(){
-        var nextEffects = clip.effects.map(function(candidate){
+        commitEffects(effects.map(function(candidate){
           return candidate.id === fx.id ? Object.assign({}, candidate, { enabled:!candidate.enabled }) : candidate;
-        });
-        edit([{ op:'clip.set', clipId:clip.id, props:{ effects:nextEffects } }]).catch(function(){});
+        }));
       };
       var remove = document.createElement('button');
       remove.textContent = '✕';
       remove.className = 'danger';
-      remove.onclick = function(){ edit([{ op:'effect.remove', clipId:clip.id, effectId:fx.id }]); };
+      remove.onclick = function(){ commitEffects(effects.filter(function(candidate){ return candidate.id !== fx.id; })); };
       head.appendChild(enable);
       head.appendChild(remove);
       box.appendChild(head);
-      var params = Object.keys(fx.params || {});
-      params.forEach(function(name){
+      Object.keys(fx.params || {}).forEach(function(name){
         var row = document.createElement('div');
         row.className = 'param-row';
         var label = document.createElement('input');
@@ -2851,24 +2888,22 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         del.textContent = '✕';
         del.className = 'danger';
         var commit = function(){
-          var nextEffects = clip.effects.map(function(candidate){
+          commitEffects(effects.map(function(candidate){
             if (candidate.id !== fx.id) return candidate;
             var copy = Object.assign({}, candidate, { params: Object.assign({}, candidate.params) });
             var parsed = Number(value.value);
             copy.params[name] = String(parsed) === value.value.trim() ? parsed : value.value;
             return copy;
-          });
-          edit([{ op:'clip.set', clipId:clip.id, props:{ effects:nextEffects } }]).catch(function(){});
+          }));
         };
         value.addEventListener('change', commit);
         del.onclick = function(){
-          var nextEffects = clip.effects.map(function(candidate){
+          commitEffects(effects.map(function(candidate){
             if (candidate.id !== fx.id) return candidate;
             var copy = Object.assign({}, candidate, { params: Object.assign({}, candidate.params) });
             delete copy.params[name];
             return copy;
-          });
-          edit([{ op:'clip.set', clipId:clip.id, props:{ effects:nextEffects } }]).catch(function(){});
+          }));
         };
         row.appendChild(label);
         row.appendChild(isColorParam(name) ? colorParamControl(value, commit) : value);
@@ -2876,16 +2911,17 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         box.appendChild(row);
       });
     });
+    if (!options.addCatalog) return;
     var addWrap = document.createElement('div');
     addWrap.className = 'field';
-    addWrap.innerHTML = '<label>Add effect</label>';
+    addWrap.innerHTML = '<label>' + escapeHtml(t('Add effect')) + '</label>';
     var add = document.createElement('select');
     var empty = document.createElement('option');
     empty.value = '';
     empty.textContent = 'Choose…';
     add.appendChild(empty);
     Object.keys(EFFECT_CATALOG).forEach(function(type){
-      if (type === 'adjust') return; // owned by the Adjust panel
+      if (skip.indexOf(type) >= 0) return;
       var option = document.createElement('option');
       option.value = type;
       option.textContent = effectLabel(type);
@@ -2893,8 +2929,16 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     });
     add.addEventListener('change', function(){
       if (!add.value) return;
-      applyEffectToSelection(add.value);
+      var type = add.value;
       add.value = '';
+      if (options.onAdd) return options.onAdd(type);
+      var preset = EFFECT_CATALOG[type];
+      commitEffects(effects.concat([{
+        id: 'fx-' + type + '-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36),
+        type: type,
+        params: JSON.parse(JSON.stringify(preset ? preset.params : {})),
+        enabled: true,
+      }]));
     });
     addWrap.appendChild(add);
     box.appendChild(addWrap);
@@ -2965,11 +3009,14 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     { id: 'mono', label: 'B&W', params: { saturation: -100, contrast: 15, grain: 12 } },
     { id: 'vivid', label: 'Vivid', params: { saturation: 40, contrast: 10, sharpen: 15 } },
   ];
-  function adjustEffectOf(clip){
-    return (clip.effects || []).filter(function(fx){ return fx.type === 'adjust'; })[0] || null;
+  function adjustEffectIn(effects){
+    return (effects || []).filter(function(fx){ return fx.type === 'adjust'; })[0] || null;
   }
-  function adjustParamsOf(clip){
-    var fx = adjustEffectOf(clip);
+  function adjustEffectOf(clip){
+    return adjustEffectIn(clip.effects);
+  }
+  function adjustParamsIn(effects){
+    var fx = adjustEffectIn(effects);
     var out = {};
     ADJUST_PARAMS.forEach(function(name){
       var raw = fx && fx.params ? Number(fx.params[name]) : 0;
@@ -2977,15 +3024,18 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     });
     return out;
   }
+  function adjustParamsOf(clip){
+    return adjustParamsIn(clip.effects);
+  }
   function adjustIsNeutral(params){
     return ADJUST_PARAMS.every(function(name){ return !params[name]; });
   }
-  function adjustEffectsWith(clip, params){
+  function adjustEffectsWithIn(effects, params){
     // Next effects array: the adjust effect updated in place or appended,
     // and dropped entirely when every slider sits at 0 so documents never
     // carry silent no-op effects.
-    var existing = adjustEffectOf(clip);
-    var effects = clip.effects || [];
+    effects = effects || [];
+    var existing = adjustEffectIn(effects);
     if (adjustIsNeutral(params)) return effects.filter(function(fx){ return fx.type !== 'adjust'; });
     var cleaned = {};
     ADJUST_PARAMS.forEach(function(name){ if (params[name]) cleaned[name] = params[name]; });
@@ -3000,19 +3050,44 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       enabled: true,
     }]);
   }
-  function commitAdjust(clip, params, message){
-    return edit([{ op:'clip.set', clipId:clip.id, props:{ effects: adjustEffectsWith(clip, params) } }])
+  function adjustEffectsWith(clip, params){
+    return adjustEffectsWithIn(clip.effects, params);
+  }
+  function previewOnStage(method, id, patch){
+    // Live drag preview through the stage runtime's own evaluate path: the
+    // patched clip/lane renders exactly as the committed edit will (SVG
+    // filter chain, overlays and all); the reload after save discards it.
+    if (!state.frameReady) return;
+    var win = stage.contentWindow;
+    if (!win || !win.__vhtml || typeof win.__vhtml[method] !== 'function') return;
+    win.__vhtml[method](id, patch).catch(function(){});
+  }
+  // An adjust target owns an effects array: a clip (clip.set) or a lane
+  // (track.set — the adjustment layer). Both share the looks, the sliders
+  // and the live preview; only clips carry keyframes.
+  function clipAdjustTarget(clip){
+    return {
+      effects: clip.effects || [],
+      clip: clip,
+      commit: function(nextEffects){ return edit([{ op:'clip.set', clipId:clip.id, props:{ effects:nextEffects } }]); },
+      preview: function(nextEffects){ previewOnStage('previewClip', clip.id, { effects:nextEffects }); },
+    };
+  }
+  function laneAdjustTarget(lane){
+    return {
+      effects: lane.effects || [],
+      clip: null,
+      commit: function(nextEffects){ return edit([{ op:'track.set', trackId:lane.id, props:{ effects:nextEffects } }]); },
+      preview: function(nextEffects){ previewOnStage('previewTrack', lane.id, { effects:nextEffects }); },
+    };
+  }
+  function commitAdjustTarget(target, params, message){
+    return target.commit(adjustEffectsWithIn(target.effects, params))
       .then(function(){ if (message) toast(message); })
       .catch(function(){});
   }
-  function previewAdjust(clip, params){
-    // Live drag preview through the stage runtime's own evaluate path: the
-    // patched clip renders exactly as the committed edit will (SVG filter
-    // chain, overlays and all); the reload after save discards the patch.
-    if (!state.frameReady) return;
-    var win = stage.contentWindow;
-    if (!win || !win.__vhtml || typeof win.__vhtml.previewClip !== 'function') return;
-    win.__vhtml.previewClip(clip.id, { effects: adjustEffectsWith(clip, params) }).catch(function(){});
+  function commitAdjust(clip, params, message){
+    return commitAdjustTarget(clipAdjustTarget(clip), params, message);
   }
   function matchingLook(params){
     for (var i = 0; i < ADJUST_LOOKS.length; i++){
@@ -3022,12 +3097,115 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     }
     return null;
   }
-  function renderAdjustSection(box, clip){
-    var params = adjustParamsOf(clip);
-    var title = document.createElement('div');
-    title.className = 'section-title';
-    title.textContent = t('Adjust · colour & tone (调节)');
-    box.appendChild(title);
+
+  // ---- adjust keyframes (adjust.<param> animation channels) ----
+
+  function adjustProperty(name){ return 'adjust.' + name; }
+  function adjustAnimationOf(clip, name){
+    return (clip.animations || []).filter(function(animation){
+      return animation.property === adjustProperty(name) && animation.timeBase !== 'project';
+    })[0] || null;
+  }
+  function clipLocalPlayhead(clip){
+    return Math.max(0, Math.min(clip.duration, Number((state.time - clip.start).toFixed(6))));
+  }
+  function keyframeIndexAt(animation, localTime){
+    var tolerance = 0.5 / Math.max(1, state.model.fps || 30);
+    for (var i = 0; i < animation.keyframes.length; i++){
+      if (Math.abs(((animation.start || 0) + animation.keyframes[i].time) - localTime) <= tolerance) return i;
+    }
+    return -1;
+  }
+  function sampleLinear(animation, localTime){
+    // Readout only (easing ignored); the runtime samples the real curve.
+    var frames = animation.keyframes.slice().sort(function(a, b){ return a.time - b.time; });
+    if (!frames.length) return 0;
+    var at = localTime - (animation.start || 0);
+    if (at <= frames[0].time) return Number(frames[0].value) || 0;
+    var last = frames[frames.length - 1];
+    if (at >= last.time) return Number(last.value) || 0;
+    for (var i = 1; i < frames.length; i++){
+      if (at <= frames[i].time){
+        var a = frames[i - 1], b = frames[i];
+        var span = b.time - a.time || 1;
+        return (Number(a.value) || 0) + ((Number(b.value) || 0) - (Number(a.value) || 0)) * ((at - a.time) / span);
+      }
+    }
+    return Number(last.value) || 0;
+  }
+  function upsertKeyframeIn(animation, localTime, value){
+    var index = keyframeIndexAt(animation, localTime);
+    var keyframes = animation.keyframes.slice();
+    if (index >= 0) keyframes[index] = Object.assign({}, keyframes[index], { value: value });
+    else {
+      keyframes.push({ time: Math.max(0, localTime - (animation.start || 0)), value: value });
+      keyframes.sort(function(a, b){ return a.time - b.time; });
+    }
+    return keyframes;
+  }
+  function animationsWithKeyframe(clip, animation, keyframes){
+    var animations = (clip.animations || []).filter(function(candidate){ return candidate.id !== animation.id; });
+    if (keyframes.length) animations.push(Object.assign({}, animation, { keyframes: keyframes }));
+    return animations;
+  }
+  // The stage runtime stores times as rationals; the Studio model speaks
+  // seconds. Convert before handing animations to the in-memory preview.
+  function rationalSeconds(seconds){
+    return { num: Math.round((Number(seconds) || 0) * 1000000), den: 1000000 };
+  }
+  function runtimeAnimations(animations){
+    return (animations || []).map(function(animation){
+      return Object.assign({}, animation, {
+        start: rationalSeconds(animation.start || 0),
+        duration: rationalSeconds(animation.duration || 0),
+        keyframes: (animation.keyframes || []).map(function(keyframe){
+          return Object.assign({}, keyframe, { time: rationalSeconds(keyframe.time) });
+        }),
+      });
+    });
+  }
+  function writeAdjustKeyframe(clip, name, value, removeInstead){
+    // CapCut diamond semantics: no track → the first keyframe starts one
+    // (held across the clip); diamond at the playhead → remove it (the track
+    // goes with its last keyframe); otherwise add/update at the playhead.
+    var localTime = clipLocalPlayhead(clip);
+    var existing = adjustAnimationOf(clip, name);
+    if (!existing){
+      if (removeInstead) return Promise.resolve();
+      var animation = {
+        id: 'anim-adjust-' + name + '-' + clip.id + '-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36),
+        property: adjustProperty(name),
+        timeBase: 'clip',
+        start: 0,
+        duration: Number(clip.duration.toFixed(6)),
+        keyframes: [{ time: localTime, value: value }],
+        easing: 'ease-in-out', iterations: 1, direction: 'normal', fill: 'both', compose: 'replace', enabled: true,
+      };
+      return edit([{ op:'animation.add', animation:animation, clipId:clip.id }])
+        .then(function(){ toast(t('Keyframe added: ') + t(ADJUST_LABELS[name]) + ' @ ' + fmtTime(state.time)); })
+        .catch(function(){});
+    }
+    var keyframes;
+    if (removeInstead){
+      var index = keyframeIndexAt(existing, localTime);
+      if (index < 0) return Promise.resolve();
+      keyframes = existing.keyframes.slice();
+      keyframes.splice(index, 1);
+    } else {
+      keyframes = upsertKeyframeIn(existing, localTime, value);
+    }
+    return edit([{ op:'clip.set', clipId:clip.id, props:{ animations: animationsWithKeyframe(clip, existing, keyframes) } }])
+      .then(function(){
+        toast(removeInstead
+          ? (keyframes.length ? t('Keyframe removed') : t('Keyframe track removed: ') + t(ADJUST_LABELS[name]))
+          : t('Keyframe set: ') + t(ADJUST_LABELS[name]) + ' @ ' + fmtTime(state.time));
+      })
+      .catch(function(){});
+  }
+
+  function renderAdjustControls(box, target){
+    var params = adjustParamsIn(target.effects);
+    var clip = target.clip;
     var looks = document.createElement('div');
     looks.className = 'look-row';
     var activeLook = matchingLook(params);
@@ -3035,57 +3213,142 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     original.textContent = t('Original');
     original.title = t('Reset every adjustment to 0');
     if (adjustIsNeutral(params)) original.className = 'active';
-    original.onclick = function(){ commitAdjust(clip, {}, t('Adjustments reset')); };
+    original.onclick = function(){ commitAdjustTarget(target, {}, t('Adjustments reset')); };
     looks.appendChild(original);
     ADJUST_LOOKS.forEach(function(look){
       var chip = document.createElement('button');
       chip.textContent = t(look.label);
       chip.title = t('Apply the ') + t(look.label) + t(' look (one-click filter preset)');
       if (activeLook === look.id) chip.className = 'active';
-      chip.onclick = function(){ commitAdjust(clip, look.params, t('Look applied: ') + t(look.label)); };
+      chip.onclick = function(){ commitAdjustTarget(target, look.params, t('Look applied: ') + t(look.label)); };
       looks.appendChild(chip);
     });
     box.appendChild(looks);
     var live = Object.assign({}, params);
     ADJUST_PARAMS.forEach(function(name){
+      var animation = clip ? adjustAnimationOf(clip, name) : null;
+      var shown = animation ? Math.round(sampleLinear(animation, clipLocalPlayhead(clip))) : params[name];
       var row = document.createElement('div');
-      row.className = 'adjust-row';
+      row.className = 'adjust-row' + (clip ? ' keyable' : '');
+      if (clip){ row.dataset.clipId = clip.id; row.dataset.adjust = name; }
       var label = document.createElement('label');
       label.textContent = t(ADJUST_LABELS[name]);
       label.title = t('Double-click to reset');
-      if (params[name]) label.className = 'touched';
+      if (params[name] || animation) label.className = 'touched';
       var slider = document.createElement('input');
       slider.type = 'range';
       slider.min = ADJUST_ONE_SIDED[name] ? '0' : '-100';
       slider.max = '100';
       slider.step = '1';
-      slider.value = String(params[name]);
+      slider.value = String(shown);
       var out = document.createElement('output');
-      out.textContent = String(params[name]);
+      out.textContent = String(shown);
       slider.addEventListener('input', function(){
         live[name] = parseInt(slider.value, 10) || 0;
         out.textContent = String(live[name]);
-        previewAdjust(clip, live);
+        if (animation){
+          previewOnStage('previewClip', clip.id, { animations: runtimeAnimations(animationsWithKeyframe(clip, animation, upsertKeyframeIn(animation, clipLocalPlayhead(clip), live[name]))) });
+        } else {
+          target.preview(adjustEffectsWithIn(target.effects, live));
+        }
       });
       slider.addEventListener('change', function(){
-        live[name] = parseInt(slider.value, 10) || 0;
-        commitAdjust(clip, live);
+        var value = parseInt(slider.value, 10) || 0;
+        if (animation) return writeAdjustKeyframe(clip, name, value, false);
+        live[name] = value;
+        commitAdjustTarget(target, live);
       });
       label.ondblclick = function(){
         live[name] = 0;
         slider.value = '0';
         out.textContent = '0';
-        commitAdjust(clip, live);
+        if (animation) return writeAdjustKeyframe(clip, name, 0, false);
+        commitAdjustTarget(target, live);
       };
       row.appendChild(label);
       row.appendChild(slider);
       row.appendChild(out);
+      if (clip){
+        var diamond = document.createElement('button');
+        var onKeyframe = animation ? keyframeIndexAt(animation, clipLocalPlayhead(clip)) >= 0 : false;
+        diamond.className = 'kf-toggle' + (animation ? ' on' : '') + (onKeyframe ? ' at' : '');
+        diamond.textContent = onKeyframe ? '◆' : '◇';
+        diamond.title = animation
+          ? (onKeyframe ? t('Remove the keyframe at the playhead') : t('Add a keyframe at the playhead with this value'))
+          : t('Start keyframing this slider (first keyframe at the playhead)');
+        diamond.onclick = function(){
+          // Recompute at click time: the playhead may have moved since render.
+          var current = adjustAnimationOf(clip, name);
+          var atKeyframe = current ? keyframeIndexAt(current, clipLocalPlayhead(clip)) >= 0 : false;
+          writeAdjustKeyframe(clip, name, parseInt(slider.value, 10) || 0, atKeyframe);
+        };
+        row.appendChild(diamond);
+      }
       box.appendChild(row);
     });
     var hint = document.createElement('div');
     hint.className = 'hint';
-    hint.textContent = t('Sliders preview live on the stage and save on release; export renders the same filter chain.');
+    hint.textContent = clip
+      ? t('Sliders preview live and save on release; ◇ starts keyframes per slider (diamonds appear on the clip). Export renders the same filter chain.')
+      : t('Lane adjustment grades this lane and every lane below it (captions stay above). Sliders preview live and save on release.');
     box.appendChild(hint);
+  }
+  function renderAdjustSection(box, clip){
+    var title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = t('Adjust · colour & tone (调节)');
+    box.appendChild(title);
+    renderAdjustControls(box, clipAdjustTarget(clip));
+  }
+
+  // ---------- adjustment layer (调节层 · lane-level effects) ----------
+
+  function laneById(id){
+    return (state.model.lanes || []).filter(function(lane){ return lane.id === id; })[0] || null;
+  }
+  function focusLaneAdjustment(laneId){
+    selectOnly(null);
+    clearElementSelection();
+    state.laneFocus = laneId;
+    state.tab = 'props';
+    renderTimeline(); renderInspector(); updateSelectionBox();
+  }
+  function renderLaneAdjustmentPanel(box, lane){
+    var head = document.createElement('div');
+    head.className = 'clip-kind';
+    head.innerHTML = '<span class="dot"></span>' + escapeHtml(lane.name || lane.id) + ' <span class="badge">' + lane.type + '</span> <span class="badge">' + escapeHtml(t('adjustment layer')) + '</span>';
+    box.appendChild(head);
+    box.appendChild(htmlNode('<div class="hint">' + escapeHtml(t('Lane-level effects grade the composited picture of this lane and every lane below it — the CapCut adjustment layer. Captions stay above and untouched.')) + '</div>'));
+    var title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = t('Adjust · colour & tone (调节)');
+    box.appendChild(title);
+    renderAdjustControls(box, laneAdjustTarget(lane));
+    var others = (lane.effects || []).filter(function(fx){ return fx.type !== 'adjust'; });
+    var fxTitle = document.createElement('div');
+    fxTitle.className = 'section-title';
+    fxTitle.textContent = t('Other lane effects');
+    box.appendChild(fxTitle);
+    renderEffectRows(box, lane.effects || [], function(nextEffects){
+      return edit([{ op:'track.set', trackId:lane.id, props:{ effects:nextEffects } }]).catch(function(){});
+    }, { skipTypes: ['adjust', 'chroma-key', 'mask'], addCatalog: true });
+    if (!others.length) box.appendChild(htmlNode('<div class="hint">' + escapeHtml(t('Blur, tint, vignette, grain… can also ride the lane; chroma-key and mask stay per-clip.')) + '</div>'));
+    var actions = document.createElement('div');
+    actions.className = 'inspector-actions';
+    var remove = document.createElement('button');
+    remove.className = 'danger';
+    remove.textContent = t('Remove adjustment layer');
+    remove.disabled = !(lane.effects || []).length;
+    remove.onclick = function(){
+      edit([{ op:'track.set', trackId:lane.id, props:{ effects:[] } }])
+        .then(function(){ toast(t('Adjustment layer removed')); }).catch(function(){});
+    };
+    var back = document.createElement('button');
+    back.textContent = t('Back to clips');
+    back.onclick = function(){ state.laneFocus = null; renderTimeline(); renderInspector(); };
+    actions.appendChild(remove);
+    actions.appendChild(back);
+    box.appendChild(actions);
   }
 
   // ---------- text style (文本样式 / 花字) ----------
@@ -4407,6 +4670,30 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     playhead.style.height = (28 + state.model.lanes.length * 45) + 'px';
     el('time').textContent = fmtTime(state.time);
     el('framebadge').textContent = 'frame ' + Math.round(state.time * state.model.fps);
+    refreshAdjustDiamonds();
+  }
+
+  // Keyframed adjust rows follow the playhead: diamond state (◇/◆) and the
+  // sampled readout update without re-rendering the whole inspector.
+  function refreshAdjustDiamonds(){
+    var rows = document.querySelectorAll('.adjust-row.keyable[data-adjust]');
+    if (!rows.length) return;
+    rows.forEach(function(row){
+      var found = clipById(row.dataset.clipId);
+      if (!found) return;
+      var animation = adjustAnimationOf(found.clip, row.dataset.adjust);
+      var toggle = row.querySelector('.kf-toggle');
+      if (!toggle) return;
+      var at = animation ? keyframeIndexAt(animation, clipLocalPlayhead(found.clip)) >= 0 : false;
+      toggle.textContent = at ? '◆' : '◇';
+      toggle.classList.toggle('at', at);
+      toggle.classList.toggle('on', Boolean(animation));
+      if (animation && document.activeElement !== row.querySelector('input')){
+        var sampled = String(Math.round(sampleLinear(animation, clipLocalPlayhead(found.clip))));
+        row.querySelector('input').value = sampled;
+        row.querySelector('output').textContent = sampled;
+      }
+    });
   }
 
   function clipEdges(excludeId){
@@ -4755,6 +5042,16 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         if (name === null || !name.trim()) return;
         edit([{ op:'track.set', trackId:lane2.id, props:{ name:name.trim() } }]).catch(function(){});
       });
+      if (lane2.type === 'video' || lane2.type === 'overlay'){
+        ctxSep(menu);
+        ctxItem(menu, t('Adjustment layer (调节层)…'), '', function(){ focusLaneAdjustment(lane2.id); });
+        if ((lane2.effects || []).length){
+          ctxItem(menu, t('Remove adjustment layer'), '', function(){
+            edit([{ op:'track.set', trackId:lane2.id, props:{ effects:[] } }])
+              .then(function(){ toast(t('Adjustment layer removed')); }).catch(function(){});
+          });
+        }
+      }
       ctxItem(menu, lane2.muted ? 'Unmute lane' : 'Mute lane', '', function(){ edit([{ op:'track.set', trackId:lane2.id, props:{ muted:!lane2.muted } }]).catch(function(){}); });
       ctxItem(menu, lane2.enabled === false ? 'Show lane' : 'Hide lane', '', function(){ edit([{ op:'track.set', trackId:lane2.id, props:{ enabled:lane2.enabled === false } }]).catch(function(){}); });
       ctxItem(menu, lane2.locked ? 'Unlock lane' : 'Lock lane', '', function(){ edit([{ op:'track.set', trackId:lane2.id, props:{ locked:!lane2.locked } }]).catch(function(){}); });
@@ -5293,6 +5590,9 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       if (fpsSelect.selectedIndex < 0) fpsSelect.value = '30/1';
     }
     el('set-background').value = state.model.background || '';
+    var colorSpaceSelect = el('set-colorspace');
+    colorSpaceSelect.value = state.model.colorSpace || 'srgb';
+    if (colorSpaceSelect.selectedIndex < 0) colorSpaceSelect.value = 'srgb';
     var grid = el('ratio-grid');
     var buttons = grid.querySelectorAll('button');
     for (var i=0;i<buttons.length;i++){
@@ -5305,7 +5605,8 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     var height = Math.max(16, Math.round(Number(el('set-height').value) || state.model.height));
     var frameRate = el('set-fps').value || (Math.round(state.model.fps) + '/1');
     var background = el('set-background').value.trim() || state.model.background;
-    var operations = [{ op:'composition.set', composition:{ width:width, height:height, frameRate:frameRate, background:background } }];
+    var colorSpace = el('set-colorspace').value || state.model.colorSpace || 'srgb';
+    var operations = [{ op:'composition.set', composition:{ width:width, height:height, frameRate:frameRate, background:background, colorSpace:colorSpace } }];
     edit(operations).then(function(){
       el('settings-modal').classList.remove('open');
       resizeStage();
@@ -5597,6 +5898,11 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 
   function isVisualClip(clip){
     return clip && (clip.kind === 'video' || clip.kind === 'image' || clip.kind === 'svg' || clip.kind === 'scene');
+  }
+  // Text cues render as transformable layers too, so entrance/exit/loop
+  // presets (CapCut text animations) apply to them; effects stay visual-only.
+  function isAnimatableClip(clip){
+    return isVisualClip(clip) || (clip && clip.kind === 'caption');
   }
 
   function transformString(transform){

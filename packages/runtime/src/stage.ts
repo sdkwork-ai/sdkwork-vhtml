@@ -199,6 +199,7 @@ html,body{margin:0;padding:0;overflow:hidden;background:transparent;}
 #vhtml-stage .vhtml-caption{position:absolute;left:6%;right:6%;bottom:8%;margin:0 auto;text-align:center;color:#fff;font:600 42px/1.28 "Segoe UI",system-ui,-apple-system,"Noto Sans",sans-serif;text-shadow:0 2px 6px rgba(0,0,0,.72);white-space:pre-wrap;word-break:break-word;}
 #vhtml-stage .vhtml-caption[data-speaker]{color:#fff;}
 #vhtml-stage .vhtml-fx-slot{position:absolute;inset:0;pointer-events:none;opacity:0;background-repeat:repeat;background-size:cover;}
+#vhtml-stage .vhtml-track-fx{position:absolute;inset:0;display:none;pointer-events:none;}
 #vhtml-stage .vhtml-chroma{position:absolute;inset:0;width:100%;height:100%;object-fit:fill;pointer-events:none;}
 #vhtml-stage .vhtml-missing{position:absolute;inset:0;display:grid;place-items:center;background:#2a0f16;color:#ff9bb3;font:600 24px system-ui;border:2px dashed #ff5577;}
 #vhtml-stage .vhtml-transition-overlays{position:absolute;inset:0;pointer-events:none;z-index:850000;}
@@ -238,6 +239,13 @@ export function buildStageHtml(options: StageBuildOptions): string {
       }
       const z = track.type === 'caption' ? 900_000 + clip.z : trackZIndex(track, visualOrder, clip);
       layers.push(clipLayer(project, clip, z, clipIndex++, proxySources));
+    }
+    if (track.type === 'video' || track.type === 'overlay') {
+      // Adjustment-layer host for the lane; the runtime sets z-index, the
+      // backdrop filter and the overlay slots per frame (hidden when unused).
+      layers.push(
+        `<div class="vhtml-track-fx" data-track-id="${escapeAttr(track.id)}"><div class="vhtml-fx-slot" data-fx="0"></div><div class="vhtml-fx-slot" data-fx="1"></div><div class="vhtml-fx-slot" data-fx="2"></div><div class="vhtml-fx-slot" data-fx="3"></div></div>`,
+      );
     }
     visualOrder += 1;
   }

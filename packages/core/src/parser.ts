@@ -1601,16 +1601,20 @@ class VhtmlParser {
       else this.error(ErrorCode.VALIDATION_INVALID_VALUE, `invalid lane type "${typeRaw}"`, el, { objectId: id });
     }
     const clips: Clip[] = [];
+    const effects: Effect[] = [];
     for (const child of elementChildren(el)) {
       const tag = tagOf(child);
       if (tag === 'clip' || tag === 'cue') {
         const clip = this.parseClip(child, type, id, timelineId);
         if (clip) clips.push(clip);
+      } else if (tag === 'effect') {
+        const effect = this.parseEffect(child, 'effect');
+        if (effect) effects.push(effect);
       } else if (tag !== 'transition') {
         if (!['style', 'script'].includes(tag)) {
           this.warn(
             ErrorCode.PARSE_UNRECOGNISED_NODE,
-            `unrecognised <${tag}> inside <lane>; expected <clip>, <cue> or <transition>`,
+            `unrecognised <${tag}> inside <lane>; expected <clip>, <cue>, <transition> or <effect>`,
             child,
             { objectId: id },
           );
@@ -1626,6 +1630,14 @@ class VhtmlParser {
 
     if (type === 'caption' && clips.some((clip) => clip.kind !== 'caption')) {
       this.error(ErrorCode.VALIDATION_INCOMPATIBLE_TRACK, 'caption lanes may only contain <cue> clips', el, { objectId: id });
+    }
+    if (effects.length && type !== 'video' && type !== 'overlay') {
+      this.error(
+        ErrorCode.VALIDATION_INCOMPATIBLE_TRACK,
+        `lane-level <effect> (adjustment layer) applies to video/overlay lanes only, not "${type}"`,
+        el,
+        { objectId: id },
+      );
     }
 
     const transitions: Transition[] = [];
@@ -1648,6 +1660,7 @@ class VhtmlParser {
       opacity: this.numberAttr(el, 'opacity', 1, 0, 1) ?? 1,
       blend: (this.attr(el, 'blend') as BlendMode) ?? 'normal',
       captionStyle: this.attr(el, 'caption-style'),
+      effects,
       clips,
       transitions,
       metadata: {},

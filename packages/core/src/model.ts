@@ -400,6 +400,13 @@ export interface Track {
   blend: BlendMode;
   /** CSS applied to caption elements on caption tracks. */
   captionStyle?: string;
+  /**
+   * Adjustment layer (调节层): visual effects applied to the composited
+   * picture of this lane and every lane below it (video/overlay lanes only).
+   * The reference runtime renders them as a backdrop filter at the top of
+   * the lane's z band; caption lanes stay above and untouched.
+   */
+  effects?: Effect[];
   clips: Clip[];
   transitions: Transition[];
   metadata?: Record<string, string>;

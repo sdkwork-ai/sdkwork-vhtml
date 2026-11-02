@@ -655,6 +655,13 @@
         "captionStyle": {
           "type": "string"
         },
+        "effects": {
+          "type": "array",
+          "description": "Adjustment layer: lane-level visual effects applied to this lane and every lane below it (video/overlay lanes only)",
+          "items": {
+            "$ref": "#/$defs/effect"
+          }
+        },
         "clips": {
           "type": "array",
           "items": {

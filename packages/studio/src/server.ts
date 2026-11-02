@@ -22,6 +22,7 @@ import {
   findTrack,
   type Asset,
   type Clip,
+  type Effect,
   type OutputConfig,
   type Project,
   type Timeline,
@@ -216,6 +217,8 @@ interface StudioLane {
   muted: boolean;
   solo?: boolean;
   locked: boolean;
+  /** Adjustment layer (lane-level visual effects). */
+  effects: Effect[];
   clips: StudioClip[];
   transitions: Array<{ id: string; from: string; to: string; type: string; duration: number }>;
 }
@@ -254,6 +257,7 @@ interface StudioModel {
   frameRate: string;
   duration: number;
   background: string;
+  colorSpace: string;
   scenes: Array<{ id: string; name: string; src?: string; duration: number }>;
   generations: Array<{ id: string; kind: string; status: string; provider?: string; model?: string; prompt: string }>;
   storyboard: StudioShot[];
@@ -365,6 +369,7 @@ function studioModel(project: Project, editingTimelineId?: string): StudioModel 
       muted: track.muted,
       solo: track.solo,
       locked: track.locked,
+      effects: track.effects ?? [],
       clips: track.clips
         .slice()
         .sort((a, b) => toNumber(a.start) - toNumber(b.start))
@@ -445,6 +450,7 @@ function studioModel(project: Project, editingTimelineId?: string): StudioModel 
     frameRate: `${project.composition.frameRate.num}/${project.composition.frameRate.den}`,
     duration: toNumber(timeline?.duration ?? project.composition.duration),
     background: project.composition.background,
+    colorSpace: project.composition.colorSpace,
     scenes: project.scenes.map((scene) => ({
       id: scene.id,
       name: scene.name ?? scene.id,

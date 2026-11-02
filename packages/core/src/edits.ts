@@ -910,6 +910,7 @@ class Editor {
       opacity: operation.track.opacity ?? 1,
       blend: operation.track.blend ?? 'normal',
       captionStyle: operation.track.captionStyle,
+      effects: operation.track.effects ? structuredClone(operation.track.effects) : [],
       clips: operation.track.clips ? structuredClone(operation.track.clips) : [],
       transitions: operation.track.transitions ? structuredClone(operation.track.transitions) : [],
       metadata: operation.track.metadata,
