@@ -41,3 +41,6 @@ examples/**/*.autosave
 .env
 .env.*
 !.env.example
+
+# One-off round commit message scratch (never commit)
+/.round*-commit-msg.txt

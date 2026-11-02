@@ -364,6 +364,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     <button id="undo" data-i18n="↶ Undo" data-i18n-title="Undo (Ctrl+Z)">↶ Undo</button>
     <button id="redo" data-i18n="↷ Redo" data-i18n-title="Redo (Ctrl+Shift+Z)">↷ Redo</button>
     <button id="canvas-settings" data-i18n="⚙ Canvas" data-i18n-title="Canvas & project settings">⚙ Canvas</button>
+    <button id="history" data-i18n-title="Version history (版本历史)" title="Version history (版本历史)">🕘</button>
     <button id="help" data-i18n-title="Keyboard shortcuts (?)">⌨</button>
     <button id="lang" title="切换界面语言 / Switch UI language" style="min-width:44px"></button>
     <button id="insp-toggle" title="Toggle inspector panel">☰ Inspector</button>
@@ -521,6 +522,16 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   </div>
 </div>
 <div id="ctx-menu"></div>
+<div class="modal" id="history-modal">
+  <div class="modal-card">
+    <div class="modal-head"><h3 data-i18n="Version history (版本历史)">Version history (版本历史)</h3><button id="history-close">✕</button></div>
+    <div class="modal-body" style="grid-template-columns:1fr">
+      <div class="field full hint" data-i18n="Every save is snapshotted (deduplicated, ≥20 s apart, last 40 kept). Restoring first saves the current state as its own version, so a wrong pick is one restore away.">Every save is snapshotted (deduplicated, ≥20 s apart, last 40 kept). Restoring first saves the current state as its own version, so a wrong pick is one restore away.</div>
+      <div class="field full"><div class="btn-row"><button id="history-pin" class="primary" data-i18n="📌 Save version…">📌 Save version…</button><button id="history-refresh" data-i18n="⟳ Refresh">⟳ Refresh</button></div></div>
+      <div class="field full" id="history-list"></div>
+    </div>
+  </div>
+</div>
 <div class="modal" id="export-modal">
   <div class="modal-card">
     <div class="modal-head"><h3>Export video</h3><button id="export-close">✕</button></div>
@@ -1325,6 +1336,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       box.appendChild(field(t('Z index'), 'number', clip.z, 1, function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ z:parseInt(value,10) || 0 } }]); }));
       box.appendChild(selectField('Fit', clip.fit, ['cover','contain','fill','none','scale-down'], function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ fit:value } }]); }));
       box.appendChild(selectField('Blend', clip.blend, ['normal','multiply','screen','overlay','darken','lighten','color-dodge','color-burn','soft-light','hard-light','difference','exclusion','hue','saturation','color','luminosity'], function(value){ edit([{ op:'clip.set', clipId:clip.id, props:{ blend:value } }]); }));
+      renderStickerSection(box, clip);
       renderAdjustSection(box, clip);
       renderCropSection(box, clip);
       renderMaskSection(box, clip);
@@ -4324,6 +4336,40 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         toast(t('Shape added: ') + t(def.label) + t(' — drag it on the stage'));
       });
     }).catch(function(error){ toast(error.message || t('Shape rejected'), true); });
+  }
+  // In-place recolour for library stickers: the clip's asset carries the
+  // shape id, so a new colour just regenerates the data-URI source.
+  function stickerAssetOf(clip){
+    if (!clip || clip.kind !== 'svg' || !clip.ref) return null;
+    var asset = assetById(clip.ref) || assetById(clip.ref.replace(/^(asset|gen):/, ''));
+    if (!asset || !asset.metadata || !asset.metadata.shape) return null;
+    var def = SHAPE_LIBRARY.filter(function(candidate){ return candidate.id === asset.metadata.shape; })[0];
+    return def ? { asset: asset, def: def } : null;
+  }
+  function renderStickerSection(box, clip){
+    var sticker = stickerAssetOf(clip);
+    if (!sticker) return;
+    var title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = t('Sticker (贴纸)') + ' · ' + t(sticker.def.label);
+    box.appendChild(title);
+    var cell = document.createElement('div');
+    cell.className = 'field';
+    cell.innerHTML = '<label>' + escapeHtml(t('Colour')) + '</label>';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = sticker.asset.metadata.color || '#6ee7ff';
+    var commit = function(){
+      var color = input.value.trim();
+      if (!color) return;
+      edit([{ op:'asset.set', assetId:sticker.asset.id, props:{
+        src: 'data:image/svg+xml;utf8,' + encodeURIComponent(shapeSvg(sticker.def, color)),
+        metadata: Object.assign({}, sticker.asset.metadata, { color: color }),
+      } }]).then(function(){ toast(t('Sticker recoloured')); }).catch(function(){});
+    };
+    input.addEventListener('change', commit);
+    cell.appendChild(colorParamControl(input, commit));
+    box.appendChild(cell);
   }
   function renderShapeLibrary(box){
     var title = document.createElement('div');
@@ -7385,6 +7431,61 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       .then(function(){ refreshExportCoverRow(); toast(t('Cover cleared')); }).catch(function(){});
   }
   function closeExport(){ el('export-modal').classList.remove('open'); }
+
+  // ---------- version history (版本历史 · local backups) ----------
+
+  function openHistory(){
+    el('history-modal').classList.add('open');
+    loadHistory();
+  }
+  function loadHistory(){
+    var list = el('history-list');
+    list.innerHTML = '<div class="hint">' + escapeHtml(t('Loading…')) + '</div>';
+    api('/api/history').then(function(body){ renderHistoryList(body.entries || []); })
+      .catch(function(error){ list.innerHTML = '<div class="hint">' + escapeHtml(error.message) + '</div>'; });
+  }
+  function renderHistoryList(entries){
+    var list = el('history-list');
+    list.innerHTML = '';
+    if (!entries.length){
+      list.appendChild(htmlNode('<div class="inspector-empty">' + escapeHtml(t('No versions yet — edit the project or pin one with "Save version".')) + '</div>'));
+      return;
+    }
+    entries.forEach(function(entry, index){
+      var row = document.createElement('div');
+      row.className = 'caption-row';
+      var when = new Date(entry.savedAt);
+      var stamp = isNaN(when.getTime()) ? entry.savedAt : when.toLocaleString();
+      row.innerHTML = '<b>' + escapeHtml(stamp) + '</b><span>r' + entry.revision + (entry.label ? ' · ' + escapeHtml(entry.label) : '') + ' · ' + Math.round(entry.sizeBytes / 1024) + ' KB' + (index === 0 ? ' · ' + escapeHtml(t('latest')) : '') + '</span>';
+      var restore = document.createElement('button');
+      restore.textContent = t('Restore');
+      restore.style.marginLeft = 'auto';
+      restore.onclick = function(event){ event.stopPropagation(); restoreVersion(entry); };
+      row.appendChild(restore);
+      list.appendChild(row);
+    });
+  }
+  function pinVersion(){
+    var label = window.prompt(t('Version label (optional)'), '');
+    if (label === null) return;
+    api('/api/history/snapshot', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ label:label }) })
+      .then(function(body){ renderHistoryList(body.entries || []); toast(t('Version saved')); })
+      .catch(function(error){ toast(error.message, true); });
+  }
+  function restoreVersion(entry){
+    var when = new Date(entry.savedAt);
+    if (!window.confirm(t('Restore the project to ') + (isNaN(when.getTime()) ? entry.savedAt : when.toLocaleString()) + ' (r' + entry.revision + ')?\\n' + t('The current state is saved as a version first; the undo stack restarts.'))) return;
+    api('/api/history/restore', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify({ id:entry.id }) })
+      .then(function(body){
+        if (!body.ok) return toast(body.error || t('Restore failed'), true);
+        selectOnly(null);
+        return applyProjectResponse(body).then(function(){
+          renderHistoryList(body.entries || []);
+          toast(t('Restored version r') + entry.revision);
+        });
+      })
+      .catch(function(error){ toast(error.message, true); });
+  }
   function runOneExport(payload){
     return new Promise(function(resolve, reject){
       api('/api/export', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(payload) })
@@ -7712,6 +7813,10 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     el('delete').onclick = function(){ removeSelected(false); };
     el('ripple').onclick = function(){ removeSelected(true); };
     el('canvas-settings').onclick = openSettings;
+    el('history').onclick = openHistory;
+    el('history-close').onclick = function(){ el('history-modal').classList.remove('open'); };
+    el('history-refresh').onclick = function(){ loadHistory(); };
+    el('history-pin').onclick = pinVersion;
     el('timeline-back').onclick = function(){ selectEditingTimeline(null, false); };
     el('settings-close').onclick = function(){ el('settings-modal').classList.remove('open'); };
     el('settings-cancel').onclick = function(){ el('settings-modal').classList.remove('open'); };

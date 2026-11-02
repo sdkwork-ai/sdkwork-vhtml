@@ -959,12 +959,54 @@ export async function startStudio(input: string | undefined, options: StudioOpti
       manifest.entry = relativeEntry;
       writeManifest(root, manifest);
     }
-    fs.writeFileSync(
-      entry,
-      serializeDocument({ specVersion: '1.1', project: session.project, source: documentSource }),
-      'utf8',
-    );
-      dirty = false;
+    const source = serializeDocument({ specVersion: '1.1', project: session.project, source: documentSource });
+    fs.writeFileSync(entry, source, 'utf8');
+    dirty = false;
+    snapshotHistory(source);
+  };
+
+  // ---- version history (版本回溯): throttled snapshots of every saved document ----
+  // Snapshots live under the project cache (`.vhtml/cache/studio-history/`),
+  // one file per saved state, deduplicated by content and spaced ≥ 20 s apart
+  // unless forced (explicit "save version" / pre-restore safety copy). The cap
+  // prunes the oldest snapshot files — the editor's own cache artifacts.
+  const historyDir = path.join(root, layout.cache, 'studio-history');
+  const HISTORY_KEEP = 40;
+  const HISTORY_MIN_GAP_MS = 20_000;
+  let lastHistoryAt = 0;
+  let lastHistoryHash = '';
+  interface HistoryEntry { id: string; savedAt: string; revision: number; label?: string; sizeBytes: number }
+  const historyEntries = (): HistoryEntry[] => {
+    if (!fs.existsSync(historyDir)) return [];
+    const entries: HistoryEntry[] = [];
+    for (const name of fs.readdirSync(historyDir)) {
+      const match = /^(\d+)-r(\d+)(?:-(.+))?\.vhtml$/.exec(name);
+      if (!match) continue;
+      const stat = fs.statSync(path.join(historyDir, name));
+      entries.push({
+        id: name.slice(0, -'.vhtml'.length),
+        savedAt: new Date(Number(match[1])).toISOString(),
+        revision: Number(match[2]),
+        label: match[3] ? match[3].replace(/-/g, ' ') : undefined,
+        sizeBytes: stat.size,
+      });
+    }
+    return entries.sort((a, b) => Number(b.id.split('-')[0]) - Number(a.id.split('-')[0]));
+  };
+  const snapshotHistory = (source: string, options: { label?: string; force?: boolean } = {}): string | undefined => {
+    const hash = createHash('sha1').update(source).digest('hex').slice(0, 12);
+    const now = Date.now();
+    if (!options.force && (hash === lastHistoryHash || now - lastHistoryAt < HISTORY_MIN_GAP_MS)) return undefined;
+    fs.mkdirSync(historyDir, { recursive: true });
+    const label = options.label ? options.label.trim().replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40) : '';
+    const id = `${now}-r${revision}${label ? `-${label}` : ''}`;
+    fs.writeFileSync(path.join(historyDir, `${id}.vhtml`), source, 'utf8');
+    lastHistoryAt = now;
+    lastHistoryHash = hash;
+    for (const stale of historyEntries().slice(HISTORY_KEEP)) {
+      fs.rmSync(path.join(historyDir, `${stale.id}.vhtml`));
+    }
+    return id;
   };
 
   const responseForProject = (extra: Record<string, unknown> = {}) => ({
@@ -1094,6 +1136,44 @@ export async function startStudio(input: string | undefined, options: StudioOpti
         if (request.method === 'POST' && url.pathname === '/api/autosave/discard') {
           if (fs.existsSync(autosavePath)) fs.rmSync(autosavePath);
           sendJson(response, 200, { ok: true });
+          return true;
+        }
+        if (request.method === 'GET' && url.pathname === '/api/history') {
+          sendJson(response, 200, { ok: true, entries: historyEntries(), keep: HISTORY_KEEP, minGapMs: HISTORY_MIN_GAP_MS });
+          return true;
+        }
+        if (request.method === 'POST' && url.pathname === '/api/history/snapshot') {
+          const body = JSON.parse((await readBody(request)) || '{}') as { label?: string };
+          const source = serializeDocument({ specVersion: '1.1', project: session.project, source: documentSource });
+          const id = snapshotHistory(source, { label: body.label, force: true });
+          sendJson(response, 200, { ok: true, id, entries: historyEntries() });
+          return true;
+        }
+        if (request.method === 'POST' && url.pathname === '/api/history/restore') {
+          const body = JSON.parse((await readBody(request)) || '{}') as { id?: string };
+          const id = String(body.id ?? '');
+          if (!/^\d+-r\d+(?:-[\p{L}\p{N}_-]+)?$/u.test(id)) {
+            sendJson(response, 400, { ok: false, error: 'invalid history id' });
+            return true;
+          }
+          const file = path.join(historyDir, `${id}.vhtml`);
+          if (!fs.existsSync(file)) {
+            sendJson(response, 404, { ok: false, error: 'history entry not found' });
+            return true;
+          }
+          try {
+            // Restoring is itself undoable through history: the current state
+            // is snapshotted first, so a wrong pick is one more restore away.
+            snapshotHistory(
+              serializeDocument({ specVersion: '1.1', project: session.project, source: documentSource }),
+              { label: 'before-restore', force: true },
+            );
+            handle.loadDocument(fs.readFileSync(file, 'utf8'));
+            editingTimelineId = session.project.mainTimeline;
+            sendJson(response, 200, { ok: true, restored: id, ...responseForProject(), entries: historyEntries() });
+          } catch (error) {
+            sendJson(response, 422, { ok: false, error: (error as Error).message });
+          }
           return true;
         }
         if (request.method === 'GET' && url.pathname === '/api/project') {
