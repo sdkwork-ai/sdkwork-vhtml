@@ -5,30 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Hello VHTML</title>
     <style>
-      .stage{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#fff;font-family:system-ui,sans-serif}
+      
+    .stage{position:absolute;inset:0;display:grid;place-items:center;text-align:center;color:#fff;font-family:system-ui,sans-serif}
     .eyebrow{font-size:26px;letter-spacing:.42em;color:#6ee7ff;font-weight:700}
     h1{font-size:136px;letter-spacing:-5px;margin:18px 0 0;line-height:.95}
     p{font-size:34px;color:#93a9cc;margin-top:26px}
     .line{height:1px;background:linear-gradient(90deg,transparent,#6ee7ff,transparent);width:420px;margin:34px auto 0;opacity:.55}
+    
     </style>
   </head>
   <body>
     <vhtml version="1.1">
-      <project id="hello-vhtml" version="1.1" title="Hello VHTML" lang="en" main-timeline="main">
+      <project id="hello-vhtml" version="1.1" title="Hello VHTML" main-timeline="main">
         <settings>
           <composition width="1920" height="1080" frame-rate="30" duration="5s" sample-rate="48000" channels="2" background="#070c16" color-space="srgb" seed="1"></composition>
         </settings>
-        <assets>
-          <asset id="asset-tone-test" type="audio" src="assets/audio/tone-test.wav" mime-type="audio/wav" duration="2s" sample-rate="44100" channels="1" hash="3ea74b2c4344d554577e8647181198a289a4d24232d8c095d0ba932e588ed8d7" size="176478">
-          </asset>
-          <asset id="shape-circle-mvzjb5jo" type="svg" src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20120%20120'%3E%3Ccircle%20cx%3D'60'%20cy%3D'60'%20r%3D'46'%20fill%3D'%236ee7ff'%2F%3E%3C%2Fsvg%3E" width="120" height="120">
-          </asset>
-          <asset id="shape-triangle-mvzjfbzn" type="svg" src="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20120%20120'%3E%3Cpath%20d%3D'M60%2012%20L110%20104%20L10%20104%20Z'%20fill%3D'%23ff0000'%2F%3E%3C%2Fsvg%3E" width="120" height="120">
-          </asset>
-        </assets>
         <scenes>
           <scene id="hello" duration="5s">
-            <div class="stage">
+            
+        <div class="stage">
           <div>
             <div class="eyebrow">VHTML 1.1</div>
             <h1>Hello, video.</h1>
@@ -36,12 +31,13 @@
             <div class="line"></div>
           </div>
         </div>
+      
           </scene>
         </scenes>
         <timelines>
           <timeline id="main" duration="5s">
             <lane id="visual" type="video" order="0">
-              <clip id="hello-clip" kind="scene" ref="scene:hello" start="0s" duration="5s" opacity="0.6">
+              <clip id="hello-clip" kind="scene" ref="scene:hello" start="0s" duration="5s">
                 <animate id="anim-opacity-1" property="opacity" start="0s" duration="0.8s" time-base="clip" easing="ease-out">
                   <keyframe at="0s" value="0"></keyframe>
                   <keyframe at="0.8s" value="1"></keyframe>
@@ -55,18 +51,6 @@
             <lane id="captions" type="caption" name="Captions" order="1" caption-style="font-size:30px;bottom:8%">
               <cue id="cue-1" start="0.8s" duration="3.4s" text="Code is the source of truth.">
               </cue>
-            </lane>
-            <lane id="audio-lane-1" type="audio" name="Voice" order="5">
-              <clip id="clip-asset-tone-test" kind="audio" ref="asset-tone-test" start="0s" duration="2s" out="2s" pitch-follows-speed>
-              </clip>
-            </lane>
-            <lane id="overlay-lane" type="overlay" name="Stickers" order="6">
-              <clip id="clip-shape-triangle-mvzjfbzn" kind="svg" ref="shape-triangle-mvzjfbzn" start="0s" duration="3s" fit="contain">
-                <transform scale-x="0.32" scale-y="0.32"></transform>
-              </clip>
-              <clip id="clip-shape-circle-mvzjb5jo" kind="svg" ref="shape-circle-mvzjb5jo" start="0.5s" duration="3s" fit="contain">
-                <transform scale-x="0.32" scale-y="0.32"></transform>
-              </clip>
             </lane>
           </timeline>
         </timelines>
