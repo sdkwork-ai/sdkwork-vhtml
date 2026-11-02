@@ -117,7 +117,8 @@ validated Core Model edit (undoable, saved atomically).
 - **Context menu** (right-click a clip, lane header, ruler or transition):
   split, **split at markers (卡点)** — one click cuts every selected clip at
   the markers inside its range (自动踩点 markers included, the music-video
-  workflow), duplicate, copy/cut/paste, **link/unlink** (linked clips move
+  workflow), **trim start / end to the playhead** (`Q` / `W`, CapCut 删除左侧
+  / 右侧), duplicate, copy/cut/paste, **link/unlink** (linked clips move
   together, CapCut-style AV pairs), **replace source from Assets…** (arms the
   Assets tab with per-asset ↔ buttons running `clip.replace`, timing kept),
   speed presets (0.25×–4×), speed ramps (slow–fast–slow / fast–slow–fast /
@@ -138,6 +139,9 @@ validated Core Model edit (undoable, saved atomically).
   envelope and snaps a beat grid to the phase with the most onset energy;
   markers land inside the clip's source window (speed/sourceIn aware) as
   coloured flags (♪ I pink, ♪ II orange) and one entry clears them all.
+  Any marker can be toggled **Mark as chapter (章节)** from its menu (green
+  flag); the export dialog's *Chapters from markers* muxes those into the MP4
+  chapter track.
 - Video clips show a **filmstrip** of poster tiles spread across the clip's
   source window (`/api/media/poster`, disk-cached); audio-capable clips
   draw a real waveform from `/api/media/peaks` (FFmpeg-decoded, cached under
@@ -254,7 +258,10 @@ keys while keeping position and alignment; "Clear text style" falls back to
 the lane defaults. **竖排 (vertical)** toggles `writing-mode: vertical-rl`
 for CJK vertical text, and **Credits roll (滚动字幕)** animates the cue from
 below the frame to above it across the whole clip with one Y keyframe track
-(drag the diamonds to retime).
+(drag the diamonds to retime). **Typewriter (打字机)** adds the normative
+`typewriter` cue effect — glyphs appear per Unicode code point at *chars per
+second* after an optional delay with an optional trailing cursor; the WebVTT /
+SRT sidecar always carries the full text.
 - **Keyframes travel with attributes**: *Copy attributes* also carries the
   animation tracks; *Paste attributes* drops them onto compatible clips
   (volume/pan only onto audible clips), and a separate *Paste keyframes*
@@ -278,6 +285,13 @@ effect and transition as draggable chips.
   **and to caption cues** — the CapCut text-animation workflow (fade, slide,
   zoom, bounce in/out, pulse, sway); caption clips also get the Keyframes
   section in Properties to edit those tracks.
+- **Shapes & stickers (形状 · 贴纸)**: rectangle, circle, triangle, star,
+  arrow, line, speech bubble and highlight bar in a chosen colour. Each
+  insert registers a normative `data:image/svg+xml` asset and places a
+  contained, 32 %-scaled clip at the playhead on the top overlay lane
+  (created when missing), already selected for stage drag/scale/rotate;
+  stickers take effects, masks, keyframes and animation presets like any
+  clip.
 
 ## Assets
 
@@ -353,7 +367,9 @@ The export dialog offers:
 - **封面 (Cover)**: 📷 *Set cover at playhead* stores the project cover time
   (`project.set metadata.cover-time`), and *Export cover frame* renders one
   deterministic frame as `<stem>.cover.png` next to the video after the
-  export finishes (batch exports cover only the first file).
+  export finishes (batch exports cover only the first file);
+- **Chapters from markers**: muxes `type="chapter"` markers into MP4 output
+  (auto-ticked when the timeline has chapter markers).
 
 Completed jobs link the video, captions sidecar, report and cover.
 
@@ -367,7 +383,7 @@ Completed jobs link the video, captions sidecar, report and cover.
 | `/api/inventory` | GET | full asset inventory with origins |
 | `/api/assets/upload` | POST | raw file body + `x-filename` header |
 | `/api/assets/relink` | POST | `{ assetId, src }` (inside project root) |
-| `/api/clip-from-asset` | POST | `{ assetId, trackId, start, duration?, mode? }` (`add`/`insert`/`overwrite`) |
+| `/api/clip-from-asset` | POST | `{ assetId, trackId, start, duration?, mode?, fit?, scale? }` (`add`/`insert`/`overwrite`; `fit`/`scale` place stickers contained and small) |
 | `/api/caption` | POST | `{ text, start, duration? }` |
 | `/api/element` | POST | `{ sceneId, path, patch: { attributes?, style?, text?, innerHTML? } }` |
 | `/api/edit` | POST | `{ operations: EditOperation[] }` (includes `timeline.copy/cut/paste`, `marker.*`, `track.*`, `animation.*`) |
@@ -380,7 +396,7 @@ Completed jobs link the video, captions sidecar, report and cover.
 | `/api/media/poster` | GET | `?asset=<id>&t=<sec>` JPEG frame thumbnail (cached) |
 | `/api/clipboard` | POST | `{ action: copy\|paste\|clear, clipIds?, start? }` REST clipboard shim |
 | `/api/snapshot` | POST | `{ time }` renders one frame to `renders/*.png` (job) |
-| `/api/export` | POST | start export job (`delivery`, `burnCaptions`, `captions`, `loudness`, `report`, `cover`/`coverTime` supported) |
+| `/api/export` | POST | start export job (`delivery`, `burnCaptions`, `captions`, `loudness`, `report`, `cover`/`coverTime`, `chapters` supported) |
 | `/api/job/:id` | GET | export progress/result |
 | `/__vhtml/stage.html` | GET | live stage document |
 
@@ -394,6 +410,7 @@ Completed jobs link the video, captions sidecar, report and cover.
 | K | pause |
 | Home / End | jump to start/end |
 | S | split selected clip(s) at playhead |
+| Q / W | trim the start / end of the selection to the playhead |
 | T | open the transition dialog |
 | C | add caption at playhead |
 | M | drop a marker at the playhead |

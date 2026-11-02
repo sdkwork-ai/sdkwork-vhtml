@@ -694,6 +694,9 @@ function collectEffects(
         adjustApplied = true;
         break;
       }
+      case 'typewriter':
+        // Caption-only text reveal; resolved per frame in the caption state.
+        break;
       case 'tint':
       case 'color-overlay': {
         overlays.push({
@@ -1074,6 +1077,33 @@ function laneEffectState(
   return { trackId: track.id, filter: style.filter, overlays: effects.overlays, zIndex };
 }
 
+/**
+ * 打字机 (typewriter) reveal for caption cues: glyphs appear at `cps` per
+ * second after `delay`, counted by code point so CJK text types one
+ * character at a time; `cursor` trails the typed text until the cue is
+ * complete. The subtitle sidecar keeps the full text (collectCaptions reads
+ * the clip, not the frame state).
+ */
+export function typewriterText(caption: CaptionClip, localTime: Rational, extensions: Project['extensions'] | undefined): string {
+  let typewriter: Effect | undefined;
+  for (const declared of caption.effects) {
+    if (!declared.enabled) continue;
+    const resolved = effectiveEffect(declared, 'effect', VISUAL_EFFECT_TYPES, extensions);
+    if (resolved.type === 'typewriter') {
+      typewriter = resolved;
+      break;
+    }
+  }
+  if (!typewriter) return caption.text;
+  const cps = Math.max(0.1, effectNumber(typewriter, ['cps', 'speed'], 12));
+  const delay = Math.max(0, effectNumber(typewriter, ['delay'], 0));
+  const cursor = effectString(typewriter, ['cursor'], '');
+  const glyphs = Array.from(caption.text);
+  const elapsed = num(localTime) - delay;
+  const shown = elapsed <= 0 ? 0 : Math.min(glyphs.length, Math.floor(elapsed * cps + 1e-6));
+  return glyphs.slice(0, shown).join('') + (shown >= glyphs.length ? '' : cursor);
+}
+
 export function evaluateFrame(
   project: Project,
   time: Rational,
@@ -1224,7 +1254,7 @@ export function evaluateFrame(
         state.caption = {
           clipId: clip.id,
           active,
-          text: caption.text,
+          text: typewriterText(caption, localTime, project.extensions),
           speaker: caption.speaker,
           style: caption.style ?? {},
           color: caption.style?.color ?? '#ffffff',

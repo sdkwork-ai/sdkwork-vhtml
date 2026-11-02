@@ -96,7 +96,7 @@ export function capabilityReport(options: { browserVersion?: string; ffmpegVersi
       audio: 'sample-accurate PCM mixer',
       captions: 'burn-in and WebVTT sidecar',
       transitions: 'crossfade, fade, dip, wipe, slide, zoom, blur',
-      effects: 'filters, overlays, vignette, grain, chroma key, masks (clip-path polygons, feathered gradient masks), rounded corners, adjust panel (brightness/contrast/saturation/temperature/tint/sharpen/highlights/shadows/fade/vignette/grain as one SVG filter chain, keyframeable via adjust.<param>), adjustment layers (lane-level effects as backdrop filters over the lane and everything below)',
+      effects: 'filters, overlays, vignette, grain, chroma key, masks (clip-path polygons, feathered gradient masks), rounded corners, adjust panel (brightness/contrast/saturation/temperature/tint/sharpen/highlights/shadows/fade/vignette/grain as one SVG filter chain, keyframeable via adjust.<param>), adjustment layers (lane-level effects as backdrop filters over the lane and everything below), typewriter caption reveal (code-point glyph timing, sidecar keeps full text)',
       keyframes: 'cubic-bezier, steps, per-keyframe easing, compose replace/add/accumulate',
       generation: 'procedural, manifest and HTTP providers; direction, review, rights, dependency graph',
       'generation-vendors': 'vendor catalog with parameter mappings for 26 vendors across video (Runway, Luma, Kling, Pika, Hailuo, Veo, Sora, Wan, Vidu, PixVerse, Seedance, SVD, Hunyuan, Firefly), image (Flux, SDXL, gpt-image-1, Midjourney, Ideogram, Qwen), music (Suno, Stable Audio, MusicGen) and speech (ElevenLabs, OpenAI, Azure); vhtml providers --known',

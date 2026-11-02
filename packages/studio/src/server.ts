@@ -1191,6 +1191,9 @@ export async function startStudio(input: string | undefined, options: StudioOpti
             start?: number | string;
             duration?: number | string;
             mode?: string;
+            /** Optional placement overrides (stickers/shapes land small and contained). */
+            fit?: Clip['fit'];
+            scale?: number;
           };
           if (!body.assetId || !body.trackId) {
             sendJson(response, 400, { error: 'assetId and trackId are required' });
@@ -1212,6 +1215,12 @@ export async function startStudio(input: string | undefined, options: StudioOpti
           if (typeof clip === 'string') {
             sendJson(response, 400, { error: clip });
             return true;
+          }
+          if (body.fit === 'cover' || body.fit === 'contain' || body.fit === 'fill' || body.fit === 'none' || body.fit === 'scale-down') {
+            clip.fit = body.fit;
+          }
+          if (typeof body.scale === 'number' && isFinite(body.scale) && body.scale > 0) {
+            clip.transform = { ...clip.transform, scaleX: body.scale, scaleY: body.scale };
           }
           const placeMode = body.mode === 'insert' || body.mode === 'overwrite' ? body.mode : 'add';
           const outcome = placeMode === 'add'
@@ -1504,6 +1513,8 @@ export async function startStudio(input: string | undefined, options: StudioOpti
             /** Render one frame as `<stem>.cover.png` next to the export. */
             cover?: boolean;
             coverTime?: number;
+            /** Mux `type="chapter"` markers into MP4 output. */
+            chapters?: boolean;
           };
           const project = structuredClone(session.project);
           let output: OutputConfig;
@@ -1609,6 +1620,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
                 rangeDuration: duration,
                 crf: payload.crf,
                 generateCaptions: Boolean(payload.captions),
+                chapters: Boolean(payload.chapters),
                 loudness: typeof payload.loudness === 'number' ? payload.loudness : undefined,
                 reportPath: payload.report ? `${absoluteOut}.report.json` : undefined,
                 timeoutMs: 30_000,

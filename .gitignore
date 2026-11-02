@@ -34,6 +34,7 @@ target/
 
 # ---- generated render output and one-off probes ----
 examples/**/renders/
+examples/**/*.autosave
 .tmp-*
 
 # ---- local environment files (never commit) ----

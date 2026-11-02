@@ -207,6 +207,9 @@ main{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;min-he
 .clip .color-tag{position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:6px 0 0 6px;pointer-events:none;z-index:3}
 .clip.drop-target{outline:2px solid var(--accent);outline-offset:-2px}
 .lib-grid{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.shape-chip{display:inline-flex;align-items:center;gap:6px;padding:3px 9px 3px 5px;font-size:11px}
+.shape-preview{display:inline-flex;width:20px;height:20px}
+.shape-preview svg{width:20px;height:20px}
 .lib-chip{border:1px solid var(--line);border-radius:8px;background:#0a1220;color:#eaf4ff;font-size:11px;padding:6px 10px;cursor:grab;user-select:none}
 .lib-chip:hover{border-color:var(--accent);background:rgba(110,231,255,.08)}
 .lib-chip:active{cursor:grabbing}
@@ -379,6 +382,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     <table>
       <tr><td>Space</td><td>Play / pause</td></tr>
       <tr><td>S</td><td>Split at playhead</td></tr>
+      <tr><td>Q / W</td><td>Trim start / end of the selection to the playhead</td></tr>
       <tr><td>D</td><td>Duplicate selection</td></tr>
       <tr><td>Delete / Shift+Delete</td><td>Remove / ripple remove</td></tr>
       <tr><td>Ctrl+C / X / V</td><td>Copy / cut / paste clipboard</td></tr>
@@ -534,6 +538,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         <label><input type="checkbox" id="exp-burn" /> Burn captions</label>
         <label><input type="checkbox" id="exp-vtt" /> WebVTT sidecar</label>
         <label><input type="checkbox" id="exp-report" /> Audit report (JSON)</label>
+        <label title="Mux markers of type chapter into the MP4 (chapter menus in players)"><input type="checkbox" id="exp-chapters" /> <span data-i18n="Chapters from markers">Chapters from markers</span></label>
         <button id="generate" type="button" title="Materialise pending generation tasks into assets (cached)">⚙ Generate assets</button>
     <button id="proxy" title="Proxy preview media (360p H.264) for smooth scrubbing on heavy footage">Proxy</button>
         <button id="exp-inout" type="button">Use In/Out</button>
@@ -2749,6 +2754,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     'rounded': { params:{ radius:'24px' } },
     'mask': { params:{ shape:'circle', size:60, cx:50, cy:50, angle:0, invert:false } },
     'adjust': { params:{ brightness:0, contrast:0, saturation:0, temperature:0, tint:0, sharpen:0, highlights:0, shadows:0, fade:0, vignette:0, grain:0 } },
+    'typewriter': { params:{ cps:12, delay:0, cursor:'' } },
     'filter': { params:{ value:'none' } },
     'css': { params:{ style:'' } },
   };
@@ -2771,6 +2777,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     'rounded': 'Rounded corners',
     'mask': 'Mask (蒙版)',
     'adjust': 'Adjust (调节)',
+    'typewriter': 'Typewriter (打字机)',
     'filter': 'Custom filter',
     'css': 'Custom CSS',
   };
@@ -2856,7 +2863,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     box.appendChild(title);
     renderEffectRows(box, clip.effects || [], function(nextEffects){
       return edit([{ op:'clip.set', clipId:clip.id, props:{ effects:nextEffects } }]).catch(function(){});
-    }, { skipTypes: ['mask', 'adjust'], addCatalog: true, onAdd: applyEffectToSelection });
+    }, { skipTypes: ['mask', 'adjust', 'typewriter'], addCatalog: true, onAdd: applyEffectToSelection });
   }
 
   // Generic effect list editor shared by clips (clip.set) and lanes
@@ -3388,6 +3395,24 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   function cueStyleOf(clip){
     return Object.assign({}, clip.style || {});
   }
+  function typewriterEffectOf(clip){
+    return (clip.effects || []).filter(function(fx){ return fx.type === 'typewriter'; })[0] || null;
+  }
+  function setTypewriter(clip, params){
+    // One typewriter effect per cue: null removes it, params replace it.
+    var effects = (clip.effects || []).filter(function(fx){ return fx.type !== 'typewriter'; });
+    if (params){
+      effects.push({
+        id: 'fx-typewriter-' + clip.id + '-' + Date.now().toString(36) + '-' + (++effectIdCounter).toString(36),
+        type: 'typewriter',
+        params: params,
+        enabled: true,
+      });
+    }
+    return edit([{ op:'clip.set', clipId:clip.id, props:{ effects:effects } }])
+      .then(function(){ toast(params ? t('Typewriter on — ') + params.cps + t(' chars/s') : t('Typewriter off')); })
+      .catch(function(){});
+  }
   function setCueStyle(clip, patch){
     var next = cueStyleOf(clip);
     Object.keys(patch).forEach(function(key){
@@ -3495,7 +3520,47 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         .catch(function(){});
     };
     motionRow.appendChild(roll);
+    var typewriter = typewriterEffectOf(clip);
+    var typeBtn = document.createElement('button');
+    typeBtn.textContent = t('Typewriter (打字机)');
+    typeBtn.title = t('Reveal the text glyph by glyph (CJK-safe); the subtitle sidecar keeps the full text');
+    typeBtn.className = typewriter ? 'active' : '';
+    typeBtn.onclick = function(){
+      if (typewriter) return setTypewriter(clip, null);
+      var glyphs = Array.from(clip.text || '').length || 1;
+      var cps = Math.max(4, Math.ceil(glyphs / Math.max(0.2, clip.duration * 0.6)));
+      setTypewriter(clip, { cps: cps, delay: 0, cursor: '' });
+    };
+    motionRow.appendChild(typeBtn);
     box.appendChild(motionRow);
+    if (typewriter){
+      var typeGrid = document.createElement('div');
+      typeGrid.className = 'text-style-grid';
+      [['cps', 'Chars per second', 1], ['delay', 'Start delay (s)', 0.1]].forEach(function(spec){
+        var cell = document.createElement('div');
+        cell.className = 'field';
+        cell.innerHTML = '<label>' + escapeHtml(t(spec[1])) + '</label>';
+        cell.appendChild(numberInput(Number(typewriter.params[spec[0]]) || (spec[0] === 'cps' ? 12 : 0), spec[2], function(value){
+          var patch = Object.assign({}, typewriter.params);
+          patch[spec[0]] = Math.max(spec[0] === 'cps' ? 0.1 : 0, parseFloat(value) || 0);
+          setTypewriter(clip, patch);
+        }));
+        typeGrid.appendChild(cell);
+      });
+      var cursorCell = document.createElement('div');
+      cursorCell.className = 'field';
+      cursorCell.innerHTML = '<label>' + escapeHtml(t('Cursor while typing (e.g. |)')) + '</label>';
+      var cursorInput = document.createElement('input');
+      cursorInput.type = 'text';
+      cursorInput.value = String(typewriter.params.cursor || '');
+      cursorInput.maxLength = 3;
+      cursorInput.addEventListener('change', function(){
+        setTypewriter(clip, Object.assign({}, typewriter.params, { cursor: cursorInput.value }));
+      });
+      cursorCell.appendChild(cursorInput);
+      typeGrid.appendChild(cursorCell);
+      box.appendChild(typeGrid);
+    }
 
     var grid = document.createElement('div');
     grid.className = 'text-style-grid';
@@ -4175,7 +4240,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     var visualGrid = document.createElement('div');
     visualGrid.className = 'lib-grid';
     Object.keys(EFFECT_CATALOG).forEach(function(type){
-      if (type === 'adjust') return; // sliders live in Properties → Adjust
+      if (type === 'adjust' || type === 'typewriter') return; // Properties-owned (Adjust panel / text panel)
       visualGrid.appendChild(makeLibraryChip('effect', type, effectLabel(type)));
     });
     box.appendChild(visualGrid);
@@ -4209,6 +4274,91 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     animationTitle.textContent = t('Animation presets (动画预设)');
     box.appendChild(animationTitle);
     renderAnimationLibrary(box);
+    renderShapeLibrary(box);
+  }
+
+  // ---------- shapes / stickers library (形状 · 贴纸) ----------
+
+  // Each shape is authored on a 120×120 viewBox with a single fill so the
+  // colour picker drives the whole glyph; stickers become data-URI SVG
+  // assets (normative data:image/svg+xml sources) placed as contained overlay
+  // clips at the playhead, then drag/scale/rotate on the stage like any clip.
+  var SHAPE_LIBRARY = [
+    { id: 'rect', label: 'Rectangle', body: function(c){ return "<rect x='12' y='24' width='96' height='72' rx='10' fill='" + c + "'/>"; } },
+    { id: 'circle', label: 'Circle', body: function(c){ return "<circle cx='60' cy='60' r='46' fill='" + c + "'/>"; } },
+    { id: 'triangle', label: 'Triangle', body: function(c){ return "<path d='M60 12 L110 104 L10 104 Z' fill='" + c + "'/>"; } },
+    { id: 'star', label: 'Star', body: function(c){ return "<path d='M60 6 L73.4 42.2 L111.6 43.4 L81.6 67.6 L91.8 104.6 L60 83 L28.2 104.6 L38.4 67.6 L8.4 43.4 L46.6 42.2 Z' fill='" + c + "'/>"; } },
+    { id: 'arrow', label: 'Arrow', body: function(c){ return "<path d='M10 48 L58 48 L58 28 L108 60 L58 92 L58 72 L10 72 Z' fill='" + c + "'/>"; } },
+    { id: 'line', label: 'Line', body: function(c){ return "<rect x='10' y='54' width='100' height='12' rx='6' fill='" + c + "'/>"; } },
+    { id: 'bubble', label: 'Speech bubble', body: function(c){ return "<path d='M14 20 h92 a10 10 0 0 1 10 10 v44 a10 10 0 0 1 -10 10 H58 L36 108 V84 H24 a10 10 0 0 1 -10 -10 V30 a10 10 0 0 1 10 -10 Z' fill='" + c + "'/>"; } },
+    { id: 'highlight', label: 'Highlight bar', body: function(c){ return "<rect x='8' y='40' width='104' height='40' rx='6' fill='" + c + "' opacity='0.55'/>"; } },
+  ];
+  var shapeColor = '#6ee7ff';
+  function shapeSvg(def, color){
+    return "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'>" + def.body(color) + "</svg>";
+  }
+  function insertShape(def){
+    var color = shapeColor;
+    var stamp = Date.now().toString(36);
+    var assetId = 'shape-' + def.id + '-' + stamp;
+    var dataUri = 'data:image/svg+xml;utf8,' + encodeURIComponent(shapeSvg(def, color));
+    var ops = [{ op:'asset.add', asset:{ id:assetId, kind:'svg', src:dataUri, width:120, height:120, metadata:{ shape:def.id, color:color } } }];
+    var lanes = state.model.lanes.slice().sort(function(a,b){ return a.order - b.order; });
+    var overlay = lanes.filter(function(lane){ return lane.type === 'overlay' && !lane.locked; }).pop();
+    var laneId = overlay ? overlay.id : nextClientId('overlay-lane');
+    if (!overlay){
+      var maxOrder = lanes.length ? lanes[lanes.length - 1].order : 0;
+      ops.push({ op:'track.add', timelineId:markerTimelineId(), track:{ id:laneId, type:'overlay', name:t('Stickers'), order:maxOrder + 1 } });
+    }
+    edit(ops).then(function(){
+      return api('/api/clip-from-asset', {
+        method:'POST', headers:{'content-type':'application/json'},
+        body: JSON.stringify({ assetId:assetId, trackId:laneId, start:snap(state.time), duration:3, mode:'add', fit:'contain', scale:0.32 }),
+      });
+    }).then(function(body){
+      if (!body || !body.ok) return toast((body && (body.error || body.message)) || t('Shape rejected'), true);
+      return applyProjectResponse(body).then(function(){
+        var added = state.model.lanes.filter(function(lane){ return lane.id === laneId; })[0];
+        var clip = added ? added.clips.filter(function(candidate){ return candidate.ref === assetId; })[0] : null;
+        if (clip){ selectOnly(clip.id); state.tab = 'props'; renderTimeline(); renderInspector(); updateSelectionBox(); }
+        toast(t('Shape added: ') + t(def.label) + t(' — drag it on the stage'));
+      });
+    }).catch(function(error){ toast(error.message || t('Shape rejected'), true); });
+  }
+  function renderShapeLibrary(box){
+    var title = document.createElement('div');
+    title.className = 'section-title';
+    title.textContent = t('Shapes & stickers (形状 · 贴纸)');
+    box.appendChild(title);
+    var colorRowEl = document.createElement('div');
+    colorRowEl.className = 'row';
+    colorRowEl.style.display = 'flex';
+    colorRowEl.style.gap = '6px';
+    colorRowEl.style.alignItems = 'center';
+    var label = document.createElement('label');
+    label.className = 'hint';
+    label.textContent = t('Colour');
+    var colorInput = document.createElement('input');
+    colorInput.type = 'text';
+    colorInput.value = shapeColor;
+    colorInput.style.maxWidth = '110px';
+    var commitColor = function(){ shapeColor = colorInput.value.trim() || '#6ee7ff'; renderInspector(); };
+    colorInput.addEventListener('change', commitColor);
+    colorRowEl.appendChild(label);
+    colorRowEl.appendChild(colorParamControl(colorInput, commitColor));
+    box.appendChild(colorRowEl);
+    var grid = document.createElement('div');
+    grid.className = 'lib-grid';
+    SHAPE_LIBRARY.forEach(function(def){
+      var chip = document.createElement('button');
+      chip.className = 'shape-chip';
+      chip.innerHTML = '<span class="shape-preview">' + shapeSvg(def, shapeColor) + '</span>' + escapeHtml(t(def.label));
+      chip.title = t('Insert at the playhead on the overlay lane (created when missing)');
+      chip.onclick = function(){ insertShape(def); };
+      grid.appendChild(chip);
+    });
+    box.appendChild(grid);
+    box.appendChild(htmlNode('<div class="hint">' + escapeHtml(t('Stickers are normative data-URI SVG assets: recolour via the Assets tab, animate with the presets above, mask or keyframe like any clip.')) + '</div>'));
   }
 
   function renderAssets(box){
@@ -4909,6 +5059,8 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       ctxTitle(menu, clip.label || clip.id);
       ctxItem(menu, t('Split at playhead'), 'S', function(){ splitClipIds(selected); }, locked);
       ctxItem(menu, t('Split at markers (卡点)'), '', function(){ splitSelectionAtMarkers(); }, locked || !timelineMarkers().length);
+      ctxItem(menu, t('Trim start to playhead (删除左侧)'), 'Q', function(){ trimSelectionToPlayhead('start'); }, locked);
+      ctxItem(menu, t('Trim end to playhead (删除右侧)'), 'W', function(){ trimSelectionToPlayhead('end'); }, locked);
       ctxItem(menu, t('Duplicate'), 'Ctrl+D', function(){ duplicateSelection(selected); }, locked);
       ctxSep(menu);
       ctxItem(menu, t('Copy'), 'Ctrl+C', function(){ copySelected(false); });
@@ -5061,6 +5213,14 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       });
       ctxItem(menu, t('Delete marker'), '', function(){
         edit([{ op:'marker.remove', timelineId:markerTimelineId(), markerId:target.marker.id }]).catch(function(){});
+      });
+      var isChapter = target.marker.type === 'chapter';
+      ctxItem(menu, isChapter ? t('Chapter → plain marker') : t('Mark as chapter (章节)'), '', function(){
+        // Chapter markers mux into MP4 exports (Chapters from markers).
+        edit([
+          { op:'marker.remove', timelineId:markerTimelineId(), markerId:target.marker.id },
+          { op:'marker.add', timelineId:markerTimelineId(), marker:{ id:target.marker.id, time:target.marker.time, name:target.marker.name, type:isChapter ? 'marker' : 'chapter', color:target.marker.color, metadata:target.marker.metadata } },
+        ]).then(function(){ toast(isChapter ? t('Marker is a plain marker again') : t('Marker is now a chapter — tick "Chapters from markers" when exporting')); }).catch(function(){});
       });
     } else if (target.type === 'timeline'){
       var at = magnetTime(timeFromClientX(event.clientX), null, event.shiftKey);
@@ -5696,6 +5856,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     ['I / O', 'Set In / Out point'],
     ['M', 'Drop a marker'],
     ['S', 'Split selected clip(s) at the playhead'],
+    ['Q / W', 'Trim the start / end of the selected clip(s) to the playhead (删除左侧 / 右侧)'],
     ['T', 'Open the transition dialog'],
     ['C', 'Add a caption at the playhead'],
     ['D / Ctrl+D', 'Duplicate selected clip(s)'],
@@ -6306,6 +6467,26 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       toast(t('Split at markers: ') + ops.length + t(' clip(s)'));
     }).catch(function(){});
   }
+  // Premiere Q/W · CapCut 删除左侧/右侧: trim every selected clip that
+  // contains the playhead so its start (or end) lands on the playhead.
+  function trimSelectionToPlayhead(side){
+    var ids = selectionIds();
+    if (!ids.length) return toast(t('Select a clip to trim to the playhead'), true);
+    var at = snap(state.time);
+    var ops = [];
+    ids.forEach(function(id){
+      var found = clipById(id);
+      if (!found || found.lane.locked) return;
+      var clip = found.clip;
+      if (at <= clip.start + 0.001 || at >= clip.start + clip.duration - 0.001) return;
+      if (side === 'start') ops.push({ op:'clip.trim', clipId:id, start:at });
+      else ops.push({ op:'clip.trim', clipId:id, duration:Number((at - clip.start).toFixed(6)) });
+    });
+    if (!ops.length) return toast(t('The playhead must be inside the selected clip(s)'), true);
+    edit(ops).then(function(){
+      toast((side === 'start' ? t('Trimmed start to playhead: ') : t('Trimmed end to playhead: ')) + ops.length + t(' clip(s)'));
+    }).catch(function(){});
+  }
   function linkedPartnerIds(found){
     var clip = found.clip;
     var partners = [];
@@ -6380,6 +6561,8 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       if (state.tab === 'element') state.tab = 'props';
     }
     renderTimeline(); renderInspector(); loadStage(); loadAssets();
+    // Promise-shaped so callers can chain follow-up UI (title/shape/import toasts).
+    return Promise.resolve(body);
   }
 
   function defaultLaneFor(asset){
@@ -7170,6 +7353,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     el('exp-burn').checked = false;
     el('exp-vtt').checked = false;
     el('exp-report').checked = false;
+    el('exp-chapters').checked = timelineMarkers().some(function(marker){ return marker.type === 'chapter'; });
     el('exp-batch').checked = false;
     el('exp-loudness').value = '';
     refreshExportCoverRow();
@@ -7236,6 +7420,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     if (el('exp-burn').checked) payload.burnCaptions = true;
     if (el('exp-vtt').checked) payload.captions = true;
     if (el('exp-report').checked) payload.report = true;
+    if (el('exp-chapters').checked) payload.chapters = true;
     var cover = coverTimeOf();
     if (el('exp-cover').checked && cover !== null){
       payload.cover = true;
@@ -7259,6 +7444,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
               captions: payload.captions,
               report: payload.report,
               loudness: payload.loudness,
+              chapters: payload.chapters,
               cover: i === 0 ? payload.cover : false,
               coverTime: payload.coverTime
             });
@@ -7384,6 +7570,8 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       else if (event.key === 'f' || event.key === 'F'){ toggleFullscreen(); }
       else if (event.key === 'z' || event.key === 'Z'){ zoomToSelection(); }
       else if (event.key === 's' || event.key === 'S'){ splitSelected(); }
+      else if (event.key === 'q' || event.key === 'Q'){ trimSelectionToPlayhead('start'); }
+      else if (event.key === 'w' || event.key === 'W'){ trimSelectionToPlayhead('end'); }
       else if (event.key === 't' || event.key === 'T'){ addTransition(); }
       else if (event.key === 'c' || event.key === 'C'){ addCaptionAtPlayhead(); }
       else if (event.key === 'j' || event.key === 'J'){ event.preventDefault(); nudgeShuttle(-1); }
