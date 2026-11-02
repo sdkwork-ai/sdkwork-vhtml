@@ -186,6 +186,7 @@ interface StudioClip {
   muted?: boolean;
   sourceIn: number;
   reverse: boolean;
+  pitchFollowsSpeed?: boolean;
   freeze?: number;
   hasTimeRemap: boolean;
   timeRemap?: { at: number; source: number; easing?: string }[];
@@ -402,6 +403,7 @@ function studioModel(project: Project, editingTimelineId?: string): StudioModel 
           muted: clip.kind === 'video' || clip.kind === 'audio' ? clip.muted : undefined,
           sourceIn: toNumber(clip.sourceIn),
           reverse: clip.reverse === true,
+          pitchFollowsSpeed: clip.pitchFollowsSpeed === true ? true : undefined,
           freeze: clip.freeze !== undefined ? toNumber(clip.freeze) : undefined,
           hasTimeRemap: clip.timeRemap !== undefined,
           timeRemap: clip.timeRemap

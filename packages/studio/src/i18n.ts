@@ -619,6 +619,25 @@ const zh: Record<string, string> = {
   'Marker is a plain marker again': '已改回普通标记',
   'Marker is now a chapter — tick "Chapters from markers" when exporting': '已设为章节 — 导出时勾选“章节来自标记”',
   'Chapters from markers': '章节来自标记',
+  // version history (版本历史)
+  'Version history (版本历史)': '版本历史',
+  'Every save is snapshotted (deduplicated, ≥20 s apart, last 40 kept). Restoring first saves the current state as its own version, so a wrong pick is one restore away.': '每次保存都会留下快照（去重、间隔 ≥20 秒、保留最近 40 个）。恢复前会先把当前状态存为一个版本，选错了再恢复一次即可。',
+  '📌 Save version…': '📌 保存版本…',
+  '⟳ Refresh': '⟳ 刷新',
+  'No versions yet — edit the project or pin one with "Save version".': '还没有版本 — 编辑项目或点“保存版本”固定一个。',
+  'latest': '最新',
+  'Version label (optional)': '版本说明（可选）',
+  'Version saved': '版本已保存',
+  'Restore the project to ': '将项目恢复到 ',
+  'The current state is saved as a version first; the undo stack restarts.': '当前状态会先保存为一个版本；撤销栈将重新开始。',
+  'Restore failed': '恢复失败',
+  'Restored version r': '已恢复到版本 r',
+  // stickers
+  'Sticker (贴纸)': '贴纸',
+  'Sticker recoloured': '贴纸已改色',
+  // pitch follows speed (变调)
+  'Pitch follows speed (变调)': '声音变调',
+  '变调: speed changes shift the pitch like tape (asetrate) instead of time-stretching (atempo); preview follows via preservesPitch': '变调：变速时音调随速度变化（磁带式 asetrate），而非保持音调的时间拉伸（atempo）；预览通过 preservesPitch 对齐',
   // language toggle
   '中文': 'English',
   'Switch UI language': '切换界面语言',

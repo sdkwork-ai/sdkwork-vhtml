@@ -76,6 +76,8 @@ export interface ClipSetProps {  opacity?: number;
   ref?: string;
   loop?: boolean;
   muted?: boolean;
+  /** 变调: speed changes shift pitch (tape) instead of time-stretching. */
+  pitchFollowsSpeed?: boolean;
   text?: string;
   speaker?: string;
   style?: Record<string, string>;
@@ -2304,6 +2306,9 @@ class Editor {
     }
     if (props.loop !== undefined && clip.kind === 'scene') clip.loop = props.loop;
     if (props.muted !== undefined && (clip.kind === 'video' || clip.kind === 'audio')) clip.muted = props.muted;
+    if (props.pitchFollowsSpeed !== undefined && (clip.kind === 'video' || clip.kind === 'audio')) {
+      clip.pitchFollowsSpeed = props.pitchFollowsSpeed ? true : undefined;
+    }
     if (props.text !== undefined && clip.kind === 'caption') clip.text = props.text;
     if (props.speaker !== undefined && clip.kind === 'caption') clip.speaker = props.speaker;
     if (props.style !== undefined && clip.kind === 'caption') clip.style = props.style;

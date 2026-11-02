@@ -576,6 +576,7 @@ class Serializer {
       ['out', clip.sourceOut ? formatTime(clip.sourceOut) : undefined],
       ['speed', clip.speed.num !== clip.speed.den ? rationalNumber({ num: clip.speed.num, den: clip.speed.den }) : undefined],
       ['reverse', clip.reverse ? true : undefined],
+      ['pitch-follows-speed', clip.pitchFollowsSpeed ? true : undefined],
       ['freeze', clip.freeze ? formatTime(clip.freeze) : undefined],
       ['enabled', clip.enabled ? undefined : false],
       ['z-index', clip.z !== 0 ? clip.z : undefined],

@@ -407,6 +407,10 @@
         "reverse": {
           "type": "boolean"
         },
+        "pitchFollowsSpeed": {
+          "type": "boolean",
+          "description": "Speed changes shift pitch like tape (asetrate) instead of the pitch-preserving default (atempo)"
+        },
         "freeze": {
           "$ref": "#/$defs/rational"
         },

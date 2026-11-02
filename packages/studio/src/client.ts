@@ -1365,6 +1365,15 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       muteCheck.appendChild(muteBox);
       muteCheck.appendChild(document.createTextNode(' Mute audio'));
       muteRow.appendChild(muteCheck);
+      var pitchCheck = document.createElement('label');
+      var pitchBox = document.createElement('input');
+      pitchBox.type = 'checkbox';
+      pitchBox.checked = Boolean(clip.pitchFollowsSpeed);
+      pitchBox.title = t('变调: speed changes shift the pitch like tape (asetrate) instead of time-stretching (atempo); preview follows via preservesPitch');
+      pitchBox.onchange = function(){ edit([{ op:'clip.set', clipId:clip.id, props:{ pitchFollowsSpeed:pitchBox.checked } }]).catch(function(){}); };
+      pitchCheck.appendChild(pitchBox);
+      pitchCheck.appendChild(document.createTextNode(' ' + t('Pitch follows speed (变调)')));
+      muteRow.appendChild(pitchCheck);
       box.appendChild(muteRow);
       if (clip.kind === 'video'){
         var detach = document.createElement('button');

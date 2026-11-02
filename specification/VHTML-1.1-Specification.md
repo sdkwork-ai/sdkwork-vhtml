@@ -230,6 +230,7 @@ VHTML 1.1 不承诺：
 | `in` / `out` | time | 0 / 推导 | 源素材时间窗口 |
 | `speed` | number >0 | 1 | 播放速度；有理数存储 |
 | `reverse` | boolean | false | 反向播放 |
+| `pitch-follows-speed` | boolean | false | 变调：变速时音调随速度变化（磁带式，参考实现 `asetrate`+`aresample`），默认变速保持音调（`atempo`）；预览通过 `preservesPitch=false` 对齐 |
 | `freeze` | time/bool | — | 固定源时间 |
 | `enabled` | boolean | true | 是否参与输出 |
 | `z-index` | integer | 0 | 同 Lane 内合成顺序 |

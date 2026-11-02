@@ -90,6 +90,8 @@ export interface AudioFrameState {
   pan: number;
   sourceTime: number;
   rate: number;
+  /** false = 变调: preview elements shift pitch with playbackRate like the tape export path. */
+  preservesPitch: boolean;
   reverse: boolean;
   muted: boolean;
 }
@@ -1277,6 +1279,7 @@ export function evaluateFrame(
           // unshifted source time. Previews clamp negative lead to 0.
           sourceTime: (source ? num(source) : 0) + audioOffsetSeconds,
           rate: num(clip.speed),
+          preservesPitch: clip.pitchFollowsSpeed !== true,
           reverse: clip.reverse,
           muted: Boolean((clip as { muted?: boolean }).muted) || track.muted || (audioSolo && !track.solo),
         };

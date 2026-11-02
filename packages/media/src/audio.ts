@@ -97,6 +97,16 @@ function atempoChain(speed: number): string[] {
   return filters;
 }
 
+/**
+ * 变调 (pitch-follows-speed): resample like tape — pitch and tempo move
+ * together by the speed ratio, then land back on the mix sample rate so
+ * the decoded length matches the atempo path exactly.
+ */
+function tapeSpeedChain(speed: number, sampleRate: number): string[] {
+  if (Math.abs(speed - 1) <= 0.0001) return [];
+  return [`asetrate=${Math.round(sampleRate * speed)}`, `aresample=${sampleRate}`];
+}
+
 function audioEffectFilters(clip: Clip): string[] {
   const filters: string[] = [];
   for (const effect of clip.audioEffects) {
@@ -270,6 +280,7 @@ async function decodeClipAudio(
   const span = toNumber(clip.sourceOut ? sub(clip.sourceOut, clip.sourceIn) : mul(clip.duration, clip.speed)) + Math.abs(offset);
   if (span <= 0) return undefined;
   const speed = toNumber(clip.speed) || 1;
+  const tape = clip.pitchFollowsSpeed === true;
   const effects = audioEffectFilters(clip);
   const key = [
     file,
@@ -278,6 +289,7 @@ async function decodeClipAudio(
     sourceIn.toFixed(9),
     span.toFixed(9),
     speed.toFixed(9),
+    tape ? 'tape' : 'stretch',
     offset.toFixed(9),
     sampleRate,
     effects.join('|'),
@@ -285,7 +297,7 @@ async function decodeClipAudio(
   const cached = decodedCache.get(key);
   if (cached) return cached;
 
-  const filters = [...atempoChain(speed), ...effects];
+  const filters = [...(tape ? tapeSpeedChain(speed, sampleRate) : atempoChain(speed)), ...effects];
   const args = ['-nostdin', '-hide_banner', '-v', 'error'];
   if (sourceIn > 0) args.push('-ss', sourceIn.toFixed(9));
   if (span > 0) args.push('-t', span.toFixed(9));

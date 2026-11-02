@@ -231,6 +231,11 @@ export interface ClipBase {
   sourceOut?: Rational;
   speed: Rational;
   reverse: boolean;
+  /**
+   * 变调: when true, speed changes shift pitch like tape (asetrate) instead
+   * of the default pitch-preserving time-stretch (atempo).
+   */
+  pitchFollowsSpeed?: boolean;
   /** When set the clip shows this exact source time for its whole duration. */
   freeze?: Rational;
   /**

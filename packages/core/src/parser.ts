@@ -1956,6 +1956,7 @@ class VhtmlParser {
       sourceOut,
       speed,
       reverse,
+      pitchFollowsSpeed: parseBool(this.attr(el, 'pitch-follows-speed'), false) || undefined,
       freeze,
       timeRemap,
       enabled: parseBool(this.attr(el, 'enabled'), true),
