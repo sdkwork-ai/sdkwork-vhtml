@@ -1276,6 +1276,9 @@ export async function startStudio(input: string | undefined, options: StudioOpti
             /** Optional placement overrides (stickers/shapes land small and contained). */
             fit?: Clip['fit'];
             scale?: number;
+            /** Canvas-drop placement: transform offsets from the canvas centre (composition px). */
+            x?: number;
+            y?: number;
           };
           if (!body.assetId || !body.trackId) {
             sendJson(response, 400, { error: 'assetId and trackId are required' });
@@ -1303,6 +1306,13 @@ export async function startStudio(input: string | undefined, options: StudioOpti
           }
           if (typeof body.scale === 'number' && isFinite(body.scale) && body.scale > 0) {
             clip.transform = { ...clip.transform, scaleX: body.scale, scaleY: body.scale };
+          }
+          if ((typeof body.x === 'number' && isFinite(body.x)) || (typeof body.y === 'number' && isFinite(body.y))) {
+            clip.transform = {
+              ...clip.transform,
+              x: typeof body.x === 'number' && isFinite(body.x) ? body.x : clip.transform.x,
+              y: typeof body.y === 'number' && isFinite(body.y) ? body.y : clip.transform.y,
+            };
           }
           const placeMode = body.mode === 'insert' || body.mode === 'overwrite' ? body.mode : 'add';
           const outcome = placeMode === 'add'

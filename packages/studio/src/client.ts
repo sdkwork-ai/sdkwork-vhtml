@@ -81,6 +81,15 @@ header{height:56px;flex:0 0 56px;display:flex;align-items:center;gap:16px;paddin
 main{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;min-height:0}
 .stage-panel{display:flex;flex-direction:column;min-width:0;min-height:0;background:radial-gradient(1200px 600px at 50% 0%,#101b2c 0%,#070b12 62%)}
 .stage-shell{flex:1 1 auto;position:relative;overflow:hidden;min-height:0}
+#stage-dropzone{position:absolute;display:none;border:2px dashed var(--accent);border-radius:4px;background:rgba(110,231,255,.05);z-index:6}
+#stage-dropzone.active{display:block;pointer-events:auto}
+#stage-dropzone.drop-hot{background:rgba(110,231,255,.12);border-style:solid}
+#stage-drop-crosshair{position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%);display:none;pointer-events:none}
+#stage-dropzone.center-hot #stage-drop-crosshair{display:block}
+#stage-drop-crosshair span{position:absolute;background:var(--accent);box-shadow:0 0 6px rgba(110,231,255,.8)}
+#stage-drop-crosshair span:first-child{left:50%;top:0;width:2px;height:100%;transform:translateX(-50%)}
+#stage-drop-crosshair span:last-child{top:50%;left:0;height:2px;width:100%;transform:translateY(-50%)}
+#stage-drop-hint{position:absolute;left:50%;top:12px;transform:translateX(-50%);padding:4px 12px;font-size:12px;border-radius:999px;background:rgba(6,12,22,.9);border:1px solid var(--accent);color:var(--accent);white-space:nowrap;pointer-events:none}
 #stage{position:absolute;top:0;left:0;border:0;background:#000;transform-origin:top left;box-shadow:0 20px 60px rgba(0,0,0,.55)}
 #stage-overlay{position:absolute;inset:0;pointer-events:none;z-index:6}
 #selection-box{position:absolute;display:none;border:2px solid var(--accent);box-shadow:0 0 0 1px rgba(0,0,0,.6),0 0 18px rgba(110,231,255,.35);cursor:move;pointer-events:auto}
@@ -410,6 +419,10 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     <div class="stage-shell" id="stage-shell">
       <div id="empty-stage">Loading stage…</div>
       <iframe id="stage" title="VHTML preview" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+      <div id="stage-dropzone">
+        <div id="stage-drop-crosshair"><span></span><span></span></div>
+        <div id="stage-drop-hint"></div>
+      </div>
       <div id="stage-overlay">
         <div id="selection-box"><span class="sel-label"></span><div class="handle rotate" data-wysiwyg="rotate" title="Drag to rotate"></div><div class="handle br" data-wysiwyg="scale" title="Drag to scale"></div></div>
         <div id="element-box"><span class="element-label"></span></div>
@@ -593,7 +606,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 <script>
 (function(){
   'use strict';
-  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, timelineStack:[], attributeClipboard:null, assetSearch:'', assetFavoritesOnly:false, laneFocus:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
+  var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, timelineStack:[], attributeClipboard:null, assetSearch:'', assetFavoritesOnly:false, laneFocus:null, canvasDrag:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
   var el = function(id){ return document.getElementById(id); };
   var stage = el('stage');
   var tracksEl = el('tracks');
@@ -905,15 +918,27 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       track.dataset.laneId = lane.id;
       track.addEventListener('dragover', function(event){
         var types = event.dataTransfer.types || [];
-        if (types.indexOf('application/x-vhtml-asset') === -1 && types.indexOf('application/x-vhtml-effect') === -1) return;
+        if (types.indexOf('application/x-vhtml-asset') === -1 && types.indexOf('application/x-vhtml-effect') === -1 && types.indexOf('application/x-vhtml-shape') === -1) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = 'copy';
         track.classList.add('drop-target');
+        // Edge auto-scroll while dragging near the timeline ends.
+        var scrollRect = scroll.getBoundingClientRect();
+        if (event.clientX < scrollRect.left + 56) scroll.scrollLeft -= 16;
+        else if (event.clientX > scrollRect.right - 56) scroll.scrollLeft += 16;
       });
       track.addEventListener('dragleave', function(){ track.classList.remove('drop-target'); });
       track.addEventListener('drop', function(event){
         event.preventDefault();
         track.classList.remove('drop-target');
+        var shapeId = event.dataTransfer.getData('application/x-vhtml-shape');
+        if (shapeId){
+          var shapeDef = SHAPE_LIBRARY.filter(function(candidate){ return candidate.id === shapeId; })[0];
+          if (!shapeDef) return;
+          var shapeTime = (event.clientX - track.getBoundingClientRect().left) / pps();
+          insertShape(shapeDef, { at: Math.max(0, magnetTime(shapeTime, null, event.shiftKey)) });
+          return;
+        }
         var effectPayload = event.dataTransfer.getData('application/x-vhtml-effect');
         if (effectPayload){
           if (lane.locked) return toast('Lane is locked', true);
@@ -3373,6 +3398,161 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     renderAdjustControls(box, clipAdjustTarget(clip));
   }
 
+  // ---------- canvas drop (拖拽到预览画布 · CapCut-style) ----------
+
+  // The stage is an iframe, so parent drag events never reach it. While an
+  // asset/effect/sticker drag is in flight, this overlay covers the stage
+  // box (pointer-events auto only during the drag), highlights the canvas,
+  // and handles the drop: media lands as a PIP overlay centred on the drop
+  // point (snapped to the canvas centre), effects land on the topmost clip
+  // under the cursor.
+  function stageScaleNow(){
+    var rect = stage.getBoundingClientRect();
+    return rect.width > 0 ? rect.width / (state.model.width || 1) : 1;
+  }
+  function canvasPointFromEvent(event){
+    var rect = stage.getBoundingClientRect();
+    var scale = rect.width > 0 ? rect.width / (state.model.width || 1) : 1;
+    var x = (event.clientX - rect.left) / scale;
+    var y = (event.clientY - rect.top) / scale;
+    var width = state.model.width || 1920;
+    var height = state.model.height || 1080;
+    var point = {
+      x: Math.max(0, Math.min(width, x)),
+      y: Math.max(0, Math.min(height, y)),
+      width: width,
+      height: height,
+      center: false,
+    };
+    // Centre assist: within 6 % of the short side the drop snaps to the exact centre.
+    var magnet = Math.min(width, height) * 0.06;
+    if (Math.abs(point.x - width / 2) < magnet && Math.abs(point.y - height / 2) < magnet){
+      point.x = width / 2;
+      point.y = height / 2;
+      point.center = true;
+    }
+    return point;
+  }
+  function canvasDragHint(info){
+    if (info.kind === 'shape') return t('Drop to place the sticker here');
+    if (info.kind === 'effect') return t('Drop on a clip to apply the effect');
+    if (info.kind === 'audio-effect') return t('Drop on a video/audio clip to apply');
+    var asset = assetById(info.id);
+    if (asset && asset.kind === 'audio') return t('Audio drops need an audio lane — drop on the timeline');
+    return t('Drop to add as a picture-in-picture overlay at this position');
+  }
+  function beginCanvasDrag(info){
+    if (!state.model) return;
+    state.canvasDrag = info;
+    var zone = document.getElementById('stage-dropzone');
+    zone.style.left = stage.style.left;
+    zone.style.top = stage.style.top;
+    zone.style.width = stage.style.width;
+    zone.style.height = stage.style.height;
+    zone.style.transform = stage.style.transform;
+    document.getElementById('stage-drop-hint').textContent = canvasDragHint(info);
+    zone.classList.add('active');
+    zone.classList.remove('drop-hot');
+    zone.classList.remove('center-hot');
+  }
+  function endCanvasDrag(){
+    state.canvasDrag = null;
+    var zone = document.getElementById('stage-dropzone');
+    zone.classList.remove('active');
+    zone.classList.remove('drop-hot');
+    zone.classList.remove('center-hot');
+  }
+  function ensureOverlayLaneOps(ops){
+    var lanes = state.model.lanes.slice().sort(function(a,b){ return a.order - b.order; });
+    var overlay = lanes.filter(function(lane){ return lane.type === 'overlay' && !lane.locked; }).pop();
+    var laneId = overlay ? overlay.id : nextClientId('overlay-lane');
+    if (!overlay){
+      var maxOrder = lanes.length ? lanes[lanes.length - 1].order : 0;
+      ops.push({ op:'track.add', timelineId:markerTimelineId(), track:{ id:laneId, type:'overlay', name:t('Stickers'), order:maxOrder + 1 } });
+    }
+    return laneId;
+  }
+  function dropAssetOnCanvas(assetId, point){
+    var asset = assetById(assetId);
+    if (!asset) return toast(t('Asset not found'), true);
+    if (asset.kind === 'audio') return toast(t('Audio drops need an audio lane — drop on the timeline'), true);
+    var ops = [];
+    var laneId = ensureOverlayLaneOps(ops);
+    var finish = ops.length ? edit(ops) : Promise.resolve();
+    finish.then(function(){
+      return api('/api/clip-from-asset', {
+        method:'POST', headers:{'content-type':'application/json'},
+        body: JSON.stringify({
+          assetId:assetId, trackId:laneId, start:snap(state.time), mode:'add',
+          fit:'contain', scale:0.4,
+          x: point.x - point.width / 2, y: point.y - point.height / 2,
+        }),
+      });
+    }).then(function(body){
+      if (!body || !body.ok) return toast((body && (body.error || body.message)) || t('Drop rejected'), true);
+      return applyProjectResponse(body).then(function(){
+        var added = state.model.lanes.filter(function(lane){ return lane.id === laneId; })[0];
+        var clip = added ? added.clips.filter(function(candidate){ return candidate.ref === assetId; })[0] : null;
+        if (clip){ selectOnly(clip.id); state.tab = 'props'; renderTimeline(); renderInspector(); updateSelectionBox(); }
+        toast(t('Added at the playhead on the canvas (') + Math.round(point.x) + ', ' + Math.round(point.y) + ')');
+      });
+    }).catch(function(error){ toast(error.message || t('Drop rejected'), true); });
+  }
+  function dropEffectOnCanvas(payload, point){
+    var win = stage.contentWindow;
+    var hit = null;
+    try {
+      var localX = point.x * stageScaleNow();
+      var localY = point.y * stageScaleNow();
+      var under = win && win.document.elementFromPoint(localX, localY);
+      var layer = under && under.closest ? under.closest('.vhtml-clip[data-clip-id]') : null;
+      if (layer) hit = clipById(layer.dataset.clipId);
+    } catch (error) { /* cross-document quirks: fall through to selection */ }
+    if (!hit){
+      var selected = selectedClip();
+      if (selected && isVisualClip(selected.clip)) hit = selected;
+    }
+    if (!hit) return toast(t('Drop on a clip to apply the effect'), true);
+    if (payload.kind === 'effect'){
+      if (!isVisualClip(hit.clip)) return toast(t('Visual effects need a visual clip'), true);
+      addEffect(hit.clip, payload.type);
+    } else if (hit.clip.kind === 'video' || hit.clip.kind === 'audio'){
+      if (payload.type === 'ducking') addDuckingToClip(hit.clip);
+      else addAudioEffectToClip(hit.clip, payload.type);
+    } else {
+      toast(t('Audio effects need a video or audio clip'), true);
+    }
+  }
+  function setupCanvasDropzone(){
+    var zone = document.getElementById('stage-dropzone');
+    if (!zone || zone.dataset.wired) return;
+    zone.dataset.wired = '1';
+    zone.addEventListener('dragover', function(event){
+      if (!state.canvasDrag) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      var point = canvasPointFromEvent(event);
+      zone.classList.add('drop-hot');
+      zone.classList.toggle('center-hot', point.center);
+    });
+    zone.addEventListener('dragleave', function(event){
+      if (event.target === zone){ zone.classList.remove('drop-hot'); zone.classList.remove('center-hot'); }
+    });
+    zone.addEventListener('drop', function(event){
+      event.preventDefault();
+      var info = state.canvasDrag;
+      endCanvasDrag();
+      if (!info) return;
+      var point = canvasPointFromEvent(event);
+      if (info.kind === 'asset') return dropAssetOnCanvas(info.id, point);
+      if (info.kind === 'shape') return insertShape(info.def, { at: snap(state.time), scale: 0.32, x: point.x - point.width / 2, y: point.y - point.height / 2 });
+      var payload = null;
+      try { payload = { kind: info.kind, type: info.id }; } catch (error) { return; }
+      dropEffectOnCanvas(payload, point);
+    });
+    document.addEventListener('dragend', endCanvasDrag, true);
+  }
+
   // ---------- adjustment layer (调节层 · lane-level effects) ----------
 
   function laneById(id){
@@ -4535,6 +4715,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       event.dataTransfer.setData('application/x-vhtml-effect', effectDragPayload(kind, type));
       event.dataTransfer.setData('text/plain', type);
       event.dataTransfer.effectAllowed = 'copy';
+      if (kind === 'effect' || kind === 'audio-effect') beginCanvasDrag({ kind: kind, id: type });
     });
     chip.onclick = function(){
       if (kind === 'transition'){
@@ -4624,7 +4805,8 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   function shapeSvg(def, color){
     return "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'>" + def.body(color) + "</svg>";
   }
-  function insertShape(def){
+  function insertShape(def, placement){
+    placement = placement || {};
     var color = shapeColor;
     var stamp = Date.now().toString(36);
     var assetId = 'shape-' + def.id + '-' + stamp;
@@ -4637,10 +4819,17 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       var maxOrder = lanes.length ? lanes[lanes.length - 1].order : 0;
       ops.push({ op:'track.add', timelineId:markerTimelineId(), track:{ id:laneId, type:'overlay', name:t('Stickers'), order:maxOrder + 1 } });
     }
+    var drop = {
+      assetId:assetId, trackId:laneId,
+      start: placement.at === undefined ? snap(state.time) : placement.at,
+      duration:3, mode:'add', fit:'contain', scale: placement.scale || 0.32,
+    };
+    if (placement.x !== undefined) drop.x = placement.x;
+    if (placement.y !== undefined) drop.y = placement.y;
     edit(ops).then(function(){
       return api('/api/clip-from-asset', {
         method:'POST', headers:{'content-type':'application/json'},
-        body: JSON.stringify({ assetId:assetId, trackId:laneId, start:snap(state.time), duration:3, mode:'add', fit:'contain', scale:0.32 }),
+        body: JSON.stringify(drop),
       });
     }).then(function(body){
       if (!body || !body.ok) return toast((body && (body.error || body.message)) || t('Shape rejected'), true);
@@ -4714,7 +4903,13 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       var chip = document.createElement('button');
       chip.className = 'shape-chip';
       chip.innerHTML = '<span class="shape-preview">' + shapeSvg(def, shapeColor) + '</span>' + escapeHtml(t(def.label));
-      chip.title = t('Insert at the playhead on the overlay lane (created when missing)');
+      chip.title = t('Drag onto the timeline or the preview canvas, or click to insert at the playhead');
+      chip.draggable = true;
+      chip.addEventListener('dragstart', function(event){
+        event.dataTransfer.setData('application/x-vhtml-shape', def.id);
+        event.dataTransfer.effectAllowed = 'copy';
+        beginCanvasDrag({ kind: 'shape', def: def });
+      });
       chip.onclick = function(){ insertShape(def); };
       grid.appendChild(chip);
     });
@@ -4849,6 +5044,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         event.dataTransfer.setData('application/x-vhtml-asset', asset.id);
         event.dataTransfer.setData('text/plain', asset.id);
         event.dataTransfer.effectAllowed = 'copy';
+        beginCanvasDrag({ kind: 'asset', id: asset.id });
       });
       grid.appendChild(card);
     });
@@ -8061,6 +8257,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 
   function bind(){
     el('play').onclick = playPause;
+    setupCanvasDropzone();
     el('prev').onclick = function(){ step(-1); };
     el('next').onclick = function(){ step(1); };
     el('reload').onclick = reloadProject;

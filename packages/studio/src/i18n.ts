@@ -659,6 +659,17 @@ const zh: Record<string, string> = {
   'Centred crop to ': '居中裁剪为 ',
   'Clear the crop': '清除裁剪',
   'Cropped to ': '已裁剪为 ',
+  // canvas drop (拖拽到预览画布)
+  'Drag onto the timeline or the preview canvas, or click to insert at the playhead': '拖到时间线或预览画布，或点击插入到播放头',
+  'Drop to place the sticker here': '松手把贴纸放到这里',
+  'Drop on a clip to apply the effect': '拖到片段上以应用效果',
+  'Drop on a video/audio clip to apply': '拖到视频/音频片段上以应用',
+  'Audio drops need an audio lane — drop on the timeline': '音频需要音频轨道 — 请拖到时间线上',
+  'Drop to add as a picture-in-picture overlay at this position': '松手在该位置添加画中画叠加',
+  'Asset not found': '素材不存在',
+  'Drop rejected': '放置被拒绝',
+  'Added at the playhead on the canvas (': '已添加到画布播放头处（',
+  'Audio effects need a video or audio clip': '音频效果需要视频或音频片段',
   // language toggle
   '中文': 'English',
   'Switch UI language': '切换界面语言',
