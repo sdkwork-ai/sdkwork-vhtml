@@ -191,6 +191,7 @@ main{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;min-he
 .timeline-scroll{flex:1 1 auto;overflow:auto;position:relative}
 .timeline-inner{position:relative;min-width:100%;padding:0 0 12px}
 .ruler{height:28px;position:sticky;top:0;z-index:5;background:linear-gradient(180deg,#0c1523,#0a111c);border-bottom:1px solid var(--line);margin-left:160px;cursor:crosshair}
+.ruler-gutter{position:sticky;left:0;top:0;float:left;width:160px;height:28px;margin-right:-160px;z-index:6;background:linear-gradient(180deg,#0c1523,#0a111c);border-right:1px solid var(--line);border-bottom:1px solid var(--line);pointer-events:none}
 .ruler .tick{position:absolute;top:0;bottom:0;border-left:1px solid #22334c;padding-left:4px;font-size:10px;color:#7389a8;overflow:hidden;white-space:nowrap}
 .lane{display:flex;border-bottom:1px solid #131e2e;min-height:44px}
 .lane-label{width:160px;flex:0 0 160px;padding:6px 10px;position:sticky;left:0;z-index:4;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;gap:2px}
@@ -489,8 +490,9 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     <div class="spacer"></div>
     <div class="zoom"><span>Zoom</span><input id="zoom" type="range" min="0.5" max="12" step="0.1" value="1" /><span id="zoomlabel">1.0×</span></div>
   </div>
-  <div class="timeline-scroll" id="timeline-scroll">
+    <div class="timeline-scroll" id="timeline-scroll">
     <div class="timeline-inner" id="timeline-inner">
+      <div class="ruler-gutter" id="ruler-gutter"></div>
       <div class="ruler" id="ruler"></div>
       <div id="tracks"></div>
       <div id="range-band"></div>
@@ -575,7 +577,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         <span id="exp-cover-info" class="hint"></span>
         <label><input type="checkbox" id="exp-cover" /> Export cover frame (PNG)</label>
       </div>
-      <div class="field full"><label data-i18n="Progress">Progress</label><div class="progress"><i id="exp-progress"></i></div><div class="result" id="exp-result"></div></div>
+      <div class="field full"><label data-i18n="Progress">Progress</label><div class="progress"><i id="exp-progress"></i></div><div class="result" id="exp-result"></div><button id="exp-cancel-job" type="button" style="display:none">✕ <span data-i18n="Cancel export">Cancel export</span></button></div>
     </div>
     <div class="modal-foot"><button id="export-cancel">Close</button><button id="export-start" class="primary">Start export</button></div>
   </div>
@@ -782,7 +784,10 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     ruler.innerHTML = '';
     var rate = pps();
     var duration = state.model.duration;
-    ruler.style.width = Math.max(1, duration * rate) + 'px';
+    // Cover the whole visible timeline: the content span, or the viewport
+    // when the project is shorter than it (no bare background past the end).
+    var viewportSpan = document.getElementById('timeline-scroll').clientWidth - 160;
+    ruler.style.width = Math.max(1, duration * rate, viewportSpan) + 'px';
     var target = 90 / rate;
     var steps = [0.1,0.2,0.25,0.5,1,2,5,10,15,30,60,120,300];
     var step = steps[steps.length-1];
@@ -1011,7 +1016,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         var filmstrip = null;
         if (asset && (asset.kind === 'image' || asset.kind === 'svg') && asset.url && asset.exists !== false){
           block.classList.add('thumb');
-          block.style.backgroundImage = 'linear-gradient(180deg,rgba(8,15,26,.15),rgba(8,15,26,.55)), url("' + asset.url + '")';
+          block.style.backgroundImage = 'linear-gradient(180deg,rgba(8,15,26,.15),rgba(8,15,26,.55)), url("' + cssUrl(asset.url) + '")';
         } else if (asset && asset.kind === 'video' && asset.exists !== false && clip.kind === 'video'){
           // Filmstrip: spread poster tiles across the clip's source window
           // (server-side poster cache makes repeated renders cheap).
@@ -5436,12 +5441,17 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   function escapeHtml(value){
     return String(value == null ? '' : value).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+  /** Escape a URL/asset path for safe use inside a CSS url("...") value. */
+  function cssUrl(value){
+    return String(value == null ? '' : value).replace(/[\\"]/g,'\\$&').replace(/\(/g,'%28').replace(/\)/g,'%29');
+  }
 
   function updatePlayhead(){
     if (!state.model) return;
     var rate = pps();
     playhead.style.left = (160 + state.time * rate) + 'px';
-    playhead.style.height = (28 + state.model.lanes.length * 45) + 'px';
+    // Height comes from the CSS (top:0/bottom:0) so the playhead always
+    // spans the ruler plus the actual lane stack, including resized lanes.
     el('time').textContent = fmtTime(state.time);
     el('framebadge').textContent = 'frame ' + Math.round(state.time * state.model.fps);
     refreshAdjustDiamonds();
@@ -8005,14 +8015,19 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       api('/api/export', { method:'POST', headers:{'content-type':'application/json'}, body:JSON.stringify(payload) })
         .then(function(body){
           state.exportJob = body.jobId;
-          pollExport();
+          el('exp-cancel-job').style.display = '';
+          // Batch mode polls here only — pollExport() is the single-export
+          // loop; running both double-wrote the progress UI.
           var timer = setInterval(function(){
             api('/api/job/' + encodeURIComponent(state.exportJob)).then(function(job){
               el('exp-progress').style.width = (job.percent || 0) + '%';
               el('exp-result').textContent = job.phase + (job.message ? ' · ' + job.message : '');
-              if (job.status === 'succeeded' || job.status === 'failed'){
+              if (job.status === 'succeeded' || job.status === 'failed' || job.status === 'cancelled'){
                 clearInterval(timer);
+                state.exportJob = null;
+                el('exp-cancel-job').style.display = 'none';
                 if (job.status === 'failed') reject(new Error(job.error || 'export failed'));
+                else if (job.status === 'cancelled') reject(new Error(t('Export cancelled')));
                 else resolve(job);
               }
             }).catch(reject);
@@ -8084,26 +8099,37 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   }
   function pollExport(){
     if (!state.exportJob) return;
+    el('exp-cancel-job').style.display = '';
     api('/api/job/' + encodeURIComponent(state.exportJob)).then(function(job){
       el('exp-progress').style.width = (job.percent || 0) + '%';
       el('exp-result').textContent = job.phase + (job.message ? ' · ' + job.message : '');
       if (job.status === 'succeeded'){
         state.exportJob = null;
+        el('exp-cancel-job').style.display = 'none';
         el('exp-progress').style.width = '100%';
-        var links = 'Complete · <a href="' + job.url + '" download>open ' + escapeHtml(job.file) + '</a> (' + (job.sizeBytes/1048576).toFixed(2) + ' MiB)';
-        if (job.captions) links += ' · <a href="' + job.captions + '" download>captions</a>';
-        if (job.report) links += ' · <a href="' + job.report + '" download>report</a>';
-        if (job.cover) links += ' · <a href="' + job.cover + '" download>' + escapeHtml(t('cover')) + '</a>';
+        // Every rendered path echoes the project/asset name — escape the
+        // attribute value too, not just the link text.
+        var href = function(url){ return String(url).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); };
+        var links = 'Complete · <a href="' + href(job.url) + '" download>open ' + escapeHtml(job.file) + '</a> (' + (job.sizeBytes/1048576).toFixed(2) + ' MiB)';
+        if (job.captions) links += ' · <a href="' + href(job.captions) + '" download>captions</a>';
+        if (job.report) links += ' · <a href="' + href(job.report) + '" download>report</a>';
+        if (job.cover) links += ' · <a href="' + href(job.cover) + '" download>' + escapeHtml(t('cover')) + '</a>';
         el('exp-result').innerHTML = links;
         toast(t('Export complete'));
       } else if (job.status === 'failed'){
         state.exportJob = null;
+        el('exp-cancel-job').style.display = 'none';
         el('exp-result').textContent = 'Failed: ' + job.error;
         toast(job.error, true);
+      } else if (job.status === 'cancelled'){
+        state.exportJob = null;
+        el('exp-cancel-job').style.display = 'none';
+        el('exp-progress').style.width = '0%';
+        el('exp-result').textContent = t('Export cancelled');
       } else {
         setTimeout(pollExport, 600);
       }
-    }).catch(function(error){ state.exportJob = null; toast(error.message, true); });
+    }).catch(function(error){ state.exportJob = null; el('exp-cancel-job').style.display = 'none'; toast(error.message, true); });
   }
 
   function setupKeys(){
@@ -8399,6 +8425,10 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     el('exp-cover-clear').onclick = clearCover;
     el('export-cancel').onclick = closeExport;
     el('export-start').onclick = startExport;
+    el('exp-cancel-job').onclick = function(){
+      if (!state.exportJob) return;
+      api('/api/job/' + encodeURIComponent(state.exportJob), { method:'DELETE' }).catch(function(){});
+    };
     el('exp-delivery').onchange = function(){
       var presetId = el('exp-delivery').value;
       if (!presetId){
@@ -8424,11 +8454,8 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       el('exp-duration').value = (state.outPoint - state.inPoint).toFixed(3);
     };
     el('asset-file').onchange = function(event){ uploadAssets(event.target.files); event.target.value = ''; };
-    el('timeline-scroll').addEventListener('wheel', function(event){
-      if (!event.ctrlKey && !event.metaKey) return;
-      event.preventDefault();
-      setZoom(state.zoom * (event.deltaY < 0 ? 1.15 : 1 / 1.15), event.clientX);
-    }, { passive:false });
+    // NOTE: Ctrl+wheel timeline zoom is bound once in setupZoom(); a second
+    // handler here used to double-zoom every wheel tick.
     document.addEventListener('click', function(event){
       var menu = el('ctx-menu');
       if (menu.style.display === 'block' && !menu.contains(event.target)) closeContextMenu();
