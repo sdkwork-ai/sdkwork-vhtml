@@ -156,7 +156,12 @@ validated Core Model edit (undoable, saved atomically).
   the green dots to automate level and timing (piecewise-linear envelope
   rendered over the waveform, evaluated per-sample by the export mixer), and
   double-click a point to remove it. During playback the timeline
-  **auto-scrolls** (page-flip) to keep the playhead in view.
+  **auto-scrolls** (page-flip) to keep the playhead in view. The transport is
+  driven by requestAnimationFrame **plus a 100 ms timer heartbeat**, so
+  playback keeps advancing when the window is occluded or not being painted
+  (rAF-suspended windows used to freeze the playhead); while occluded the
+  preview steps at the timer rate and catches up as soon as the window paints
+  again — audio and video elements play natively throughout.
 - **Keyframe diamonds drag**: drag a diamond horizontally to retime that
   keyframe (`clip.set animations`, clamped to the clip and sorted on commit).
 - **Audio effects**: the Properties panel lists a clip's `audio-effect`s and

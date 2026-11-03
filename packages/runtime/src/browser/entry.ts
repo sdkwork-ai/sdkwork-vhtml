@@ -56,6 +56,8 @@ const fps = data.frameRate.num / data.frameRate.den;
 const duration = toNumber(data.duration);
 const realSetTimeout: (fn: () => void, ms: number) => number =
   clock?.realSetTimeout ?? window.setTimeout.bind(window);
+const realClearTimeout: (id: number) => void =
+  clock?.realClearTimeout ?? window.clearTimeout.bind(window);
 const realNow: () => number = clock?.realNow ?? Date.now.bind(Date);
 const stableRaf: (fn: (time: number) => void) => number =
   clock?.realRaf ?? window.requestAnimationFrame.bind(window);
@@ -100,6 +102,7 @@ let currentTime = 0;
 let currentFrame = 0;
 let playing = false;
 let playRaf = 0;
+let playTimer = 0;
 let playStartedAt = 0;
 let playOffset = 0;
 let seekCounter = 0;
@@ -652,35 +655,63 @@ function play(): void {
   timeApi.playing = true;
   playOffset = currentTime;
   playStartedAt = realNow();
+  lastLoopAt = 0;
   void seek(playOffset);
   try {
     for (const animation of document.getAnimations()) {
       if (animation.playState === 'paused') animation.play();
     }
   } catch { /* ignore */ }
-  const loop = (): void => {
-    if (!playing) return;
-    const elapsed = (realNow() - playStartedAt) / 1000;
-    const time = playOffset + elapsed;
-    if (time >= duration) {
-      playing = false;
-      timeApi.playing = false;
-      void seek(duration - 1 / fps);
-      return;
-    }
-    void seek(time);
-    playRaf = stableRaf(loop);
-  };
-  playRaf = stableRaf(loop);
+  scheduleLoop();
+}
+
+let lastLoopAt = 0;
+/**
+ * The transport must never depend on the compositor: requestAnimationFrame
+ * stops firing entirely when the window is occluded or not being painted
+ * (visibilityState still reports 'visible'), which used to freeze playback
+ * with `playing: true`. rAF gives the smooth cadence while the page paints;
+ * a 100 ms timer guarantees the loop keeps advancing when it does not. The
+ * timestamp guard dedupes the double schedule.
+ */
+function scheduleLoop(): void {
+  playRaf = stableRaf(playLoop);
+  playTimer = realSetTimeout(playLoop, 100);
+}
+
+function playLoop(): void {
+  if (!playing) return;
+  const now = realNow();
+  if (now - lastLoopAt < 80) return;
+  lastLoopAt = now;
+  const elapsed = (now - playStartedAt) / 1000;
+  const time = playOffset + elapsed;
+  if (time >= duration) {
+    playing = false;
+    timeApi.playing = false;
+    cancelLoop();
+    void seek(duration - 1 / fps);
+    return;
+  }
+  void seek(time);
+  scheduleLoop();
+}
+
+function cancelLoop(): void {
+  if (playRaf) {
+    window.cancelAnimationFrame(playRaf);
+    playRaf = 0;
+  }
+  if (playTimer) {
+    realClearTimeout(playTimer);
+    playTimer = 0;
+  }
 }
 
 function pause(): void {
   playing = false;
   timeApi.playing = false;
-  if (playRaf) {
-    window.cancelAnimationFrame(playRaf);
-    playRaf = 0;
-  }
+  cancelLoop();
   for (const video of videos.values()) video.pause();
   for (const audio of audios.values()) audio.pause();
   if (!deterministic) {
