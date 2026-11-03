@@ -168,7 +168,9 @@ const LAUNCHER_HTML = `<!doctype html>
     for (const project of data.projects){
       const row = document.createElement('div');
       row.className = 'project';
-      row.innerHTML = '<b>' + project.name + (project.hasAutosave ? ' <span class="badge">' + T.autosave + '</span>' : '') + '</b><small>' + project.entry + '</small>';
+      // Folder names come straight from disk — escape before they touch HTML.
+      const esc = (text) => String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      row.innerHTML = '<b>' + esc(project.name) + (project.hasAutosave ? ' <span class="badge">' + T.autosave + '</span>' : '') + '</b><small>' + esc(project.entry) + '</small>';
       const open = document.createElement('button');
       open.textContent = T.open;
       open.onclick = async () => {
@@ -205,6 +207,23 @@ function sendJson(response: http.ServerResponse, status: number, body: unknown):
   response.end(text);
 }
 
+/** Bounded JSON body reader — the launcher has no auth, so bodies stay small. */
+function readJsonBody(request: http.IncomingMessage, limit = 64 * 1024): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    request.setEncoding('utf8');
+    request.on('data', (chunk: string) => {
+      body += chunk;
+      if (body.length > limit) {
+        reject(new Error('request body too large'));
+        request.destroy();
+      }
+    });
+    request.on('end', () => resolve(body));
+    request.on('error', reject);
+  });
+}
+
 function safeName(name: string): string {
   const cleaned = name.trim().replace(/[\\/:*?"<>|]/g, '-').replace(/^\.+/, '');
   if (!cleaned || cleaned === '.' || cleaned === '..') {
@@ -236,12 +255,7 @@ export async function startStudioLauncher(options: LauncherOptions = {}): Promis
         return;
       }
       if (request.method === 'POST' && url.pathname === '/api/launcher/new') {
-        const body = JSON.parse((await new Promise<Buffer>((resolve, reject) => {
-          const chunks: Buffer[] = [];
-          request.on('data', (chunk: Buffer) => chunks.push(chunk));
-          request.on('end', () => resolve(Buffer.concat(chunks)));
-          request.on('error', reject);
-        })).toString('utf8') || '{}') as { name?: string };
+        const body = JSON.parse((await readJsonBody(request)) || '{}') as { name?: string };
         try {
           const name = safeName(String(body.name ?? ''));
           const dir = path.join(projectsDir, name);
@@ -277,12 +291,7 @@ export async function startStudioLauncher(options: LauncherOptions = {}): Promis
         return;
       }
       if (request.method === 'POST' && url.pathname === '/api/launcher/open') {
-        const body = JSON.parse((await new Promise<Buffer>((resolve, reject) => {
-          const chunks: Buffer[] = [];
-          request.on('data', (chunk: Buffer) => chunks.push(chunk));
-          request.on('end', () => resolve(Buffer.concat(chunks)));
-          request.on('error', reject);
-        })).toString('utf8') || '{}') as { dir?: string };
+        const body = JSON.parse((await readJsonBody(request)) || '{}') as { dir?: string };
         const dir = body.dir ? path.resolve(body.dir) : '';
         if (!dir || !isVhtmlProjectDir(dir)) {
           sendJson(response, 404, { ok: false, error: `not a VHTML project: ${body.dir ?? ''}` });

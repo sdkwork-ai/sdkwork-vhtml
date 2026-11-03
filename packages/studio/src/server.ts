@@ -273,7 +273,7 @@ interface StudioModel {
 
 interface Job {
   id: string;
-  status: 'running' | 'succeeded' | 'failed';
+  status: 'running' | 'succeeded' | 'failed' | 'cancelled';
   phase: string;
   percent: number;
   frame: number;
@@ -297,6 +297,29 @@ function sendJson(response: http.ServerResponse, status: number, body: unknown):
     'content-length': Buffer.byteLength(text),
   });
   response.end(text);
+}
+
+/**
+ * Crash-safe file write: the data lands in a temp file inside the target
+ * directory first, then renames over the target — a crash mid-write can
+ * never leave a truncated document behind (the entry `.vhtml`, autosave and
+ * history snapshots are the user's only copies).
+ */
+function writeFileAtomic(file: string, data: string): void {
+  const directory = path.dirname(file);
+  fs.mkdirSync(directory, { recursive: true });
+  const temp = path.join(directory, `.${path.basename(file)}.${process.pid}.${Date.now().toString(36)}.tmp`);
+  fs.writeFileSync(temp, data, 'utf8');
+  try {
+    fs.renameSync(temp, file);
+  } catch (error) {
+    try {
+      fs.rmSync(temp, { force: true });
+    } catch {
+      /* best-effort temp cleanup */
+    }
+    throw error;
+  }
 }
 
 function readBody(request: http.IncomingMessage, limit = 4 * 1024 * 1024): Promise<string> {
@@ -625,6 +648,15 @@ function resolveAssetFile(project: Project, root: string, assetId: string): { as
   const file = path.resolve(root, decoded);
   if (!isInsideRoot(root, file)) return `asset path escapes the project root: ${asset.src}`;
   if (!fs.existsSync(file)) return `asset file is missing: ${asset.src}`;
+  // The lexical check alone lets a symlink inside the project root point at
+  // an arbitrary file outside it — resolve the real path and re-check.
+  try {
+    if (!isInsideRoot(fs.realpathSync(root), fs.realpathSync(file))) {
+      return `asset path escapes the project root: ${asset.src}`;
+    }
+  } catch {
+    return `asset file is missing: ${asset.src}`;
+  }
   return { asset, file };
 }
 
@@ -930,6 +962,8 @@ export async function startStudio(input: string | undefined, options: StudioOpti
   let revision = 0;
   let latestDiagnostics = validation.diagnostics;
   const jobs = new Map<string, Job>();
+  /** Abort controllers for running export/snapshot jobs (`DELETE /api/job/:id`). */
+  const jobControls = new Map<string, AbortController>();
   const mediaCacheDir = path.join(root, layout.cache, 'studio-media');
   // Editing view: the timeline the Studio is currently showing (CapCut-style
   // "enter compound clip"). Document identity and export stay on mainTimeline.
@@ -950,6 +984,16 @@ export async function startStudio(input: string | undefined, options: StudioOpti
     });
   };
 
+  /** mtime of the entry at our last read/write — external writes are detected against it. */
+  const statMtimeMs = (file: string): number => {
+    try {
+      return fs.statSync(file).mtimeMs;
+    } catch {
+      return 0;
+    }
+  };
+  let entryMtimeMs = statMtimeMs(entry);
+
   const save = (): void => {
     const relativeEntry = toPosixRelative(root, entry);
     if (!manifestPath) {
@@ -962,7 +1006,21 @@ export async function startStudio(input: string | undefined, options: StudioOpti
       writeManifest(root, manifest);
     }
     const source = serializeDocument({ specVersion: '1.1', project: session.project, source: documentSource });
-    fs.writeFileSync(entry, source, 'utf8');
+    // wysiwyg.md §9: last writer wins, but an external change to the entry
+    // must be surfaced instead of silently clobbered.
+    const currentMtime = statMtimeMs(entry);
+    if (currentMtime !== entryMtimeMs && currentMtime !== 0) {
+      latestDiagnostics = [
+        ...latestDiagnostics.filter((diagnostic) => diagnostic.code !== 'STUDIO_EXTERNAL_CHANGE'),
+        {
+          code: 'STUDIO_EXTERNAL_CHANGE',
+          severity: 'warning',
+          message: `entry file changed on disk while editing (mtime ${currentMtime}); this save overwrites the external copy — Reload to reconcile`,
+        },
+      ];
+    }
+    writeFileAtomic(entry, source);
+    entryMtimeMs = statMtimeMs(entry);
     dirty = false;
     snapshotHistory(source);
   };
@@ -1002,7 +1060,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
     fs.mkdirSync(historyDir, { recursive: true });
     const label = options.label ? options.label.trim().replace(/[^\p{L}\p{N}_-]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 40) : '';
     const id = `${now}-r${revision}${label ? `-${label}` : ''}`;
-    fs.writeFileSync(path.join(historyDir, `${id}.vhtml`), source, 'utf8');
+    writeFileAtomic(path.join(historyDir, `${id}.vhtml`), source);
     lastHistoryAt = now;
     lastHistoryHash = hash;
     for (const stale of historyEntries().slice(HISTORY_KEEP)) {
@@ -1026,6 +1084,21 @@ export async function startStudio(input: string | undefined, options: StudioOpti
   });
 
   let dirty = false;
+  /**
+   * Session mutation queue. `/api/generate` awaits provider I/O before
+   * replacing the session wholesale; without the lock an `/api/edit` landing
+   * mid-generation would be applied to the old session and then silently
+   * discarded. Edits, undo/redo and generation all queue through here.
+   */
+  let sessionChain: Promise<unknown> = Promise.resolve();
+  const withSessionLock = <T>(task: () => T | Promise<T>): Promise<T> => {
+    const run = sessionChain.then(task);
+    sessionChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  };
   const applyAndSave = (operations: EditOperation[], options: { checkFiles?: boolean } = {}) => {
     const result = session.apply(operations, { autoExtend: true });
     if (!result.ok) {
@@ -1063,6 +1136,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
       }
       hydrateCachedAssets(nextParsed.document.project, root, cacheFilePath(root, layout));
       documentSource = { path: entry, root, raw: nextSource };
+      entryMtimeMs = statMtimeMs(entry);
       session = new EditSession(nextParsed.document.project);
       editingTimelineId = session.project.mainTimeline;
       latestDiagnostics = validateDocument(nextParsed.document, { root, checkFiles: true }).diagnostics;
@@ -1507,7 +1581,11 @@ export async function startStudio(input: string | undefined, options: StudioOpti
         }
         if (request.method === 'POST' && url.pathname === '/api/edit') {
           const body = JSON.parse((await readBody(request)) || '{}') as { operations?: EditOperation[] };
-          const outcome = applyAndSave(body.operations ?? []);
+          if (body.operations !== undefined && !Array.isArray(body.operations)) {
+            sendJson(response, 400, { ok: false, message: 'operations must be an array of edit operations' });
+            return true;
+          }
+          const outcome = await withSessionLock(() => applyAndSave(body.operations ?? []));
           sendJson(response, outcome.status, outcome.body);
           return true;
         }
@@ -1558,35 +1636,43 @@ export async function startStudio(input: string | undefined, options: StudioOpti
         if (request.method === 'POST' && url.pathname === '/api/generate') {
           const body = JSON.parse((await readBody(request)) || '{}') as { taskIds?: string[]; force?: boolean };
           const { materializeGenerations } = await import('@sdkwork/vhtml-generation');
-          const generated = await materializeGenerations({
-            project: session.project,
-            root,
-            taskIds: body.taskIds,
-            force: body.force,
-            cachePath: cacheFilePath(root, layout),
-          });
-          if (generated.failed.length) {
-            sendJson(response, 422, {
-              ok: false,
-              message: 'generation failed for some tasks',
-              failed: generated.failed,
-              ran: generated.ran,
-              ...responseForProject(),
+          const outcome = await withSessionLock(async () => {
+            const generated = await materializeGenerations({
+              project: session.project,
+              root,
+              taskIds: body.taskIds,
+              force: body.force,
+              cachePath: cacheFilePath(root, layout),
             });
-            return true;
-          }
-          session = new EditSession(generated.project);
-          save();
-          rebuildStage();
-          revision += 1;
-          latestDiagnostics = validateDocument({ specVersion: '1.1', project: session.project }, { root, checkFiles: false }).diagnostics;
-          sendJson(response, 200, {
-            ok: true,
-            ran: generated.ran,
-            skipped: generated.skipped,
-            issues: generated.issues,
-            ...responseForProject(),
+            if (generated.failed.length) {
+              return {
+                status: 422,
+                body: {
+                  ok: false,
+                  message: 'generation failed for some tasks',
+                  failed: generated.failed,
+                  ran: generated.ran,
+                  ...responseForProject(),
+                },
+              };
+            }
+            session = new EditSession(generated.project);
+            save();
+            rebuildStage();
+            revision += 1;
+            latestDiagnostics = validateDocument({ specVersion: '1.1', project: session.project }, { root, checkFiles: false }).diagnostics;
+            return {
+              status: 200,
+              body: {
+                ok: true,
+                ran: generated.ran,
+                skipped: generated.skipped,
+                issues: generated.issues,
+                ...responseForProject(),
+              },
+            };
           });
+          sendJson(response, outcome.status, outcome.body);
           return true;
         }
         if (request.method === 'POST' && url.pathname === '/api/export') {
@@ -1689,6 +1775,8 @@ export async function startStudio(input: string | undefined, options: StudioOpti
             createdAt: Date.now(),
           };
           jobs.set(taskId, job);
+          const controller = new AbortController();
+          jobControls.set(taskId, controller);
           sendJson(response, 200, { jobId: taskId });
           void (async () => {
             try {
@@ -1717,6 +1805,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
                 reportPath: payload.report ? `${absoluteOut}.report.json` : undefined,
                 timeoutMs: 30_000,
                 executablePath: options.chrome ?? manifest.preview?.chrome,
+                signal: controller.signal,
                 onProgress: (progress) => {
                   job.phase = progress.phase;
                   job.percent = progress.percent;
@@ -1764,10 +1853,28 @@ export async function startStudio(input: string | undefined, options: StudioOpti
                 job.report = '/' + path.relative(root, result.reportPath).split(path.sep).join('/');
               }
             } catch (error) {
-              job.status = 'failed';
-              job.error = (error as Error).message;
+              const aborted = controller.signal.aborted;
+              job.status = aborted ? 'cancelled' : 'failed';
+              job.error = aborted ? 'cancelled' : (error as Error).message;
+            } finally {
+              jobControls.delete(taskId);
             }
           })();
+          return true;
+        }
+        if (request.method === 'DELETE' && url.pathname.startsWith('/api/job/')) {
+          const id = decodeURIComponent(url.pathname.slice('/api/job/'.length));
+          const job = jobs.get(id);
+          if (!job) {
+            sendJson(response, 404, { error: 'job_not_found' });
+            return true;
+          }
+          if (job.status === 'running') {
+            job.status = 'cancelled';
+            job.message = 'cancelled by user';
+            jobControls.get(id)?.abort();
+          }
+          sendJson(response, 200, job);
           return true;
         }
         if (request.method === 'GET' && url.pathname.startsWith('/api/job/')) {
@@ -1934,20 +2041,35 @@ export async function startStudio(input: string | undefined, options: StudioOpti
           try {
             fs.mkdirSync(mediaCacheDir, { recursive: true });
             const data = await onceByKey(`proxy:${cacheFile}`, async () => {
-              const result = await runTool(
-                ffmpegPath(),
-                [
-                  '-nostdin', '-v', 'error', '-y',
-                  '-i', file,
-                  '-vf', 'scale=-2:360',
-                  '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
-                  '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
-                  '-an',
-                  cacheFile,
-                ],
-                { timeoutMs: 300_000, maxOutputBytes: 256 * 1024 * 1024 },
-              );
-              void result;
+              // Encode to a temp file and rename: a killed/crashed encode
+              // must never leave a partial mp4 that the cache serves forever.
+              const temp = `${cacheFile}.${process.pid}.${Date.now().toString(36)}.tmp`;
+              try {
+                await runTool(
+                  ffmpegPath(),
+                  [
+                    '-nostdin', '-v', 'error', '-y',
+                    '-i', file,
+                    '-vf', 'scale=-2:360',
+                    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28',
+                    '-pix_fmt', 'yuv420p', '-movflags', '+faststart',
+                    '-an',
+                    // The temp name ends in `.tmp`, so the muxer must be
+                    // explicit — ffmpeg cannot infer it from the extension.
+                    '-f', 'mp4',
+                    temp,
+                  ],
+                  { timeoutMs: 300_000, maxOutputBytes: 256 * 1024 * 1024 },
+                );
+                fs.renameSync(temp, cacheFile);
+              } catch (error) {
+                try {
+                  fs.rmSync(temp, { force: true });
+                } catch {
+                  /* best-effort temp cleanup */
+                }
+                throw error;
+              }
               return fs.readFileSync(cacheFile);
             });
             respond(data);
@@ -1962,7 +2084,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
             toNumber(findTimeline(session.project, session.project.mainTimeline)?.duration ?? project_duration(session.project)),
             Number(body.time) || 0,
           ));
-          const snapshotId = `snapshot-${Date.now().toString(36)}`;
+          const snapshotId = `snapshot-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
           const relativeOut = path.join(layout.renders, `${snapshotId}.png`);
           const absoluteOut = path.join(root, relativeOut);
           const job: Job = {
@@ -2040,6 +2162,11 @@ export async function startStudio(input: string | undefined, options: StudioOpti
         sendJson(response, 404, { error: 'not_found' });
         return true;
       } catch (error) {
+        // Malformed request JSON is a client error, not a server fault.
+        if (error instanceof SyntaxError) {
+          sendJson(response, 400, { error: 'invalid JSON body' });
+          return true;
+        }
         sendJson(response, 500, { error: (error as Error).message });
         return true;
       }
@@ -2064,7 +2191,7 @@ export async function startStudio(input: string | undefined, options: StudioOpti
         if (lastCheckpointRevision === revision) return;
         lastCheckpointRevision = revision;
         try {
-          fs.writeFileSync(autosavePath, serializeDocument({ specVersion: '1.1', project: session.project }), 'utf8');
+          writeFileAtomic(autosavePath, serializeDocument({ specVersion: '1.1', project: session.project }));
         } catch {
           /* transient IO; the next tick retries */
         }

@@ -170,7 +170,20 @@ export function readManifest(root: string): { manifest: ProjectManifest; manifes
 export function writeManifest(root: string, manifest: ProjectManifest): string {
   const file = path.join(root, MANIFEST_FILENAME);
   fs.mkdirSync(root, { recursive: true });
-  fs.writeFileSync(file, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  // Atomic write (temp + rename): a crash mid-write must not truncate the
+  // manifest every package reads on startup.
+  const temp = path.join(root, `.${MANIFEST_FILENAME}.${process.pid}.tmp`);
+  fs.writeFileSync(temp, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  try {
+    fs.renameSync(temp, file);
+  } catch (error) {
+    try {
+      fs.rmSync(temp, { force: true });
+    } catch {
+      /* best-effort temp cleanup */
+    }
+    throw error;
+  }
   return file;
 }
 

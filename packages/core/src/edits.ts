@@ -301,12 +301,55 @@ function clipOut(clip: Clip): Rational {
   return clip.sourceOut ?? add(clip.sourceIn, mul(clip.duration, clip.speed));
 }
 
-function clipSourceSpan(clip: Clip): Rational {
-  return mul(clip.duration, clip.speed);
+/**
+ * Fades are measured from each end. When a piece is shorter than the fades it
+ * inherits, they scale down proportionally (fadeIn + fadeOut <= duration is a
+ * validated invariant); a lone fade clamps to the piece duration.
+ */
+function rescaleFades(clip: Clip, duration: Rational): void {
+  const inFade = clip.fadeIn;
+  const outFade = clip.fadeOut;
+  if (inFade && outFade) {
+    const fadeSum = add(inFade, outFade);
+    if (gt(fadeSum, duration)) {
+      const scale = div(duration, fadeSum);
+      clip.fadeIn = mul(inFade, scale);
+      clip.fadeOut = mul(outFade, scale);
+    }
+  } else if (outFade) {
+    if (gt(outFade, duration)) clip.fadeOut = duration;
+  } else if (inFade) {
+    if (gt(inFade, duration)) clip.fadeIn = duration;
+  }
 }
 
 function isTimeBearing(clip: Clip): boolean {
   return clip.kind === 'video' || clip.kind === 'audio';
+}
+
+/**
+ * Kind compatibility for changing a clip's source (`clip.replace` and
+ * `clip.set { ref }`). Generation refs map to their produced asset kind so a
+ * generated music task can back an audio clip while a speech task cannot back
+ * a picture.
+ */
+function refCompatibleWithClip(
+  clip: Clip,
+  resolved: NonNullable<ReturnType<typeof resolveReference>>,
+): boolean {
+  if (resolved.kind === 'scene') return clip.kind === 'scene';
+  if (resolved.kind === 'timeline') return clip.kind === 'timeline';
+  const resolvedKind =
+    resolved.kind === 'asset'
+      ? resolved.asset.kind
+      : resolved.kind === 'generation'
+        ? generationKindToAssetKind(resolved.task.kind)
+        : undefined;
+  const audioKinds = ['audio', 'video'];
+  const visualMediaKinds = ['video', 'image', 'svg'];
+  return clip.kind === 'audio'
+    ? audioKinds.includes(resolvedKind ?? '')
+    : visualMediaKinds.includes(resolvedKind ?? '');
 }
 
 function uniqueId(project: Project, base: string): string {
@@ -427,10 +470,14 @@ function splitAnimations(
       rightResult.push(copy);
       continue;
     }
+    // Boundary value at the cut. animationValueAt samples CSS values, so a
+    // numeric property comes back as a numeric string ("0.5"); keyframe
+    // values stay numeric when the animation's own values are numeric.
+    const sampledBoundary = animationValueAt(animation, cut) ?? animation.keyframes[animation.keyframes.length - 1]?.value ?? 0;
     const boundary =
-      animationValueAt(animation, cut) ??
-      animation.keyframes[animation.keyframes.length - 1]?.value ??
-      0;
+      typeof sampledBoundary === 'string' && sampledBoundary.trim() !== '' && Number.isFinite(Number(sampledBoundary))
+        ? Number(sampledBoundary)
+        : sampledBoundary;
     // Truncate the left half at the cut.
     const left = structuredClone(animation);
     left.duration = sub(cut, start);
@@ -443,7 +490,10 @@ function splitAnimations(
     left.keyframes.push({ time: left.duration, value: boundary });
     leftResult.push(left);
 
-    // The right half starts from the interpolated boundary value.
+    // The right half starts from the interpolated boundary value. Keyframe
+    // times are animation-relative, so clip-local positions must add
+    // `start` before comparing against / shifting by the cut; the right
+    // piece then re-zeroes `start` (absorbed into the keyframe times).
     const right = structuredClone(animation);
     right.id = nextId(animation.id);
     right.start = ZERO;
@@ -451,8 +501,8 @@ function splitAnimations(
     right.iterations = 1;
     right.fill = 'both';
     right.keyframes = animation.keyframes
-      .filter((keyframe) => gt(keyframe.time, cut))
-      .map((keyframe) => ({ ...keyframe, time: sub(keyframe.time, cut) }));
+      .filter((keyframe) => gt(add(start, keyframe.time), cut))
+      .map((keyframe) => ({ ...keyframe, time: sub(add(start, keyframe.time), cut) }));
     right.keyframes.unshift({ time: ZERO, value: boundary });
     if (!gt(right.duration, ZERO)) right.duration = rat(1, 1000);
     rightResult.push(right);
@@ -481,26 +531,30 @@ const EDITOR_CLIPBOARD: { entries: ClipboardEntry[] | null } = { entries: null }
  */
 export function sanitizeAnimationInput(raw: Animation): Animation | undefined {
   if (!raw || typeof raw !== 'object' || !raw.property) return undefined;
-  const finiteSeconds = (value: unknown, fallback: number): number => {
+  // Times may arrive as rationals (model round-trips) or as loose numbers /
+  // numeric strings (studio JSON); rationals must survive exactly.
+  const toRat = (value: unknown, fallbackSeconds: number): Rational => {
+    if (isRational(value)) return value;
     const parsed = typeof value === 'number' ? value : Number(value);
-    return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+    if (Number.isFinite(parsed) && parsed >= 0) return rat(Math.round(parsed * 1_000_000), 1_000_000);
+    return rat(Math.round(fallbackSeconds * 1_000_000), 1_000_000);
   };
   const keyframes = (Array.isArray(raw.keyframes) ? raw.keyframes : [])
     .map((keyframe) => ({
-      time: rat(Math.round(finiteSeconds(keyframe?.time, 0) * 1_000_000), 1_000_000),
+      time: toRat(keyframe?.time, 0),
       value: keyframe?.value ?? 0,
       easing: keyframe?.easing,
     }))
-    .sort((a, b) => a.time.num * b.time.den - b.time.num * a.time.den);
+    .sort((a, b) => toNumber(a.time) - toNumber(b.time));
   if (!keyframes.length) return undefined;
   const iterations = raw.iterations === 'infinite' || (Number.isFinite(Number(raw.iterations)) && Number(raw.iterations) > 0)
     ? raw.iterations
     : 1;
-  const durationFallback = keyframes[keyframes.length - 1]!.time.num / keyframes[keyframes.length - 1]!.time.den;
+  const durationFallback = toNumber(keyframes[keyframes.length - 1]!.time);
   return {
     ...raw,
-    start: rat(Math.round(finiteSeconds(raw.start, 0) * 1_000_000), 1_000_000),
-    duration: rat(Math.round(Math.max(0.001, finiteSeconds(raw.duration, durationFallback)) * 1_000_000), 1_000_000),
+    start: toRat(raw.start, 0),
+    duration: toRat(raw.duration, Math.max(0.001, durationFallback)),
     timeBase: raw.timeBase === 'project' ? 'project' : 'clip',
     easing: typeof raw.easing === 'string' && raw.easing ? raw.easing : 'linear',
     iterations,
@@ -519,6 +573,12 @@ class Editor {
   private readonly autoExtend: boolean;
   private readonly strict: boolean;
   private frameRate: Rational;
+  /**
+   * Clip ids whose link-follow must be suppressed while set (moveBatch moves
+   * every selected clip itself, so linked siblings inside the selection must
+   * not be shifted a second time by clip.move's follow logic).
+   */
+  private suppressLinkFollow: Set<string> | null = null;
 
   constructor(project: Project, options: ApplyEditOptions) {
     this.project = options.mutate ? project : cloneProject(project);
@@ -555,7 +615,12 @@ class Editor {
   apply(operation: EditOperation): void {
     switch (operation.op) {
       case 'batch':
-        for (const child of operation.operations) this.apply(child);
+        // Spec §2: batches stop at the first failing child — a failed batch
+        // must not accumulate writes from siblings after the error.
+        for (const child of operation.operations) {
+          this.apply(child);
+          if (this.bag.hasErrors) break;
+        }
         return;
       case 'project.set':
         this.projectSet(operation);
@@ -1058,7 +1123,13 @@ class Editor {
             sibling.timeline.id === found.timeline.id &&
             sibling.clip.metadata?.linkId === linkId
           ) {
-            sibling.clip.start = rat(Math.round((toNumber(sibling.clip.start) + delta) * 1_000_000), 1_000_000);
+            if (this.suppressLinkFollow?.has(sibling.clip.id)) continue;
+            const moved = rat(Math.round((toNumber(sibling.clip.start) + delta) * 1_000_000), 1_000_000);
+            if (lt(moved, ZERO)) {
+              this.fail(ErrorCode.EDIT_OUT_OF_BOUNDS, `linked clip "${sibling.clip.id}" would start before the timeline`);
+              return;
+            }
+            sibling.clip.start = moved;
             ensureExtent(this.project, sibling.timeline, clipEnd(sibling.clip), this.autoExtend);
             this.changed.push(sibling.clip.id);
           }
@@ -1094,11 +1165,74 @@ class Editor {
       this.fail(ErrorCode.EDIT_OUT_OF_BOUNDS, 'clip start must not be negative');
       return;
     }
-    const oldDuration = clip.duration;
     const newDuration = sub(newEnd, newStart);
     const deltaStart = sub(newStart, oldStart);
 
-    if (isTimeBearing(clip) && !clip.freeze) {
+    if (clip.timeRemap?.keyframes.length) {
+      // The runtime maps media time as sourceIn + remap(localTime) and
+      // ignores speed while a remap exists. Trimming shifts the local origin,
+      // so the source window must follow remap(deltaStart) and the curve
+      // itself must shift/drop keyframes (mirrors clip.split's curve split).
+      const remap = clip.timeRemap;
+      let sourceIn = clip.sourceIn;
+      let keyframes: TimeRemapKeyframe[] = remap.keyframes;
+      if (gt(deltaStart, ZERO)) {
+        const boundary = sampleTimeRemap(remap, deltaStart);
+        sourceIn = add(clip.sourceIn, boundary);
+        keyframes = [
+          { at: ZERO, source: ZERO, easing: undefined },
+          ...remap.keyframes
+            .filter((keyframe) => gt(keyframe.at, deltaStart))
+            .map((keyframe) => ({
+              at: sub(keyframe.at, deltaStart),
+              source: sub(keyframe.source, boundary),
+              easing: keyframe.easing,
+            })),
+        ];
+      } else if (lt(deltaStart, ZERO)) {
+        // Extending left: the curve clamps to its first value before zero, so
+        // the window absorbs the first keyframe's source offset.
+        const head = remap.keyframes[0]!;
+        sourceIn = add(clip.sourceIn, head.source);
+        keyframes = [
+          { at: ZERO, source: ZERO, easing: undefined },
+          ...remap.keyframes.map((keyframe) => ({
+            at: sub(keyframe.at, deltaStart),
+            source: sub(keyframe.source, head.source),
+            easing: keyframe.easing,
+          })),
+        ];
+      }
+      keyframes = keyframes.filter((keyframe) => lte(keyframe.at, newDuration));
+      if (!keyframes.length) {
+        // Every keyframe lay beyond the new end (only possible without a
+        // shift): the runtime clamps to the first value across the whole
+        // exposed range.
+        keyframes = [{ at: ZERO, source: sub(remap.keyframes[0]!.source, sub(sourceIn, clip.sourceIn)), easing: undefined }];
+      } else if (lt(keyframes[keyframes.length - 1]!.at, newDuration)) {
+        // Tail keyframes were cut: re-anchor the curve at the new end so the
+        // tail keeps the original curve's interpolated value instead of the
+        // runtime's beyond-last clamp.
+        const source = sub(sampleTimeRemap(remap, add(deltaStart, newDuration)), sub(sourceIn, clip.sourceIn));
+        keyframes = [...keyframes, { at: newDuration, source, easing: undefined }];
+      }
+      // The exposed media range must stay inside the source.
+      const sourceDuration = sourceDurationOf(this.project, clip);
+      for (const keyframe of keyframes) {
+        const media = add(sourceIn, keyframe.source);
+        if (lt(media, ZERO)) {
+          this.fail(ErrorCode.EDIT_OUT_OF_BOUNDS, 'trim exposes media before the start of the source');
+          return;
+        }
+        if (sourceDuration && gt(media, sourceDuration)) {
+          this.fail(ErrorCode.EDIT_OUT_OF_BOUNDS, 'trim exceeds the end of the source media');
+          return;
+        }
+      }
+      clip.sourceIn = sourceIn;
+      clip.sourceOut = undefined;
+      clip.timeRemap = { keyframes, easing: remap.easing };
+    } else if (isTimeBearing(clip) && !clip.freeze) {
       const sourceDuration = sourceDurationOf(this.project, clip);
       const speed = clip.speed;
       if (clip.reverse) {
@@ -1135,8 +1269,8 @@ class Editor {
     }
     clip.start = newStart;
     clip.duration = newDuration;
+    rescaleFades(clip, newDuration);
     ensureExtent(this.project, found.timeline, clipEnd(clip), this.autoExtend);
-    void oldDuration;
     this.changed.push(clip.id);
   }
 
@@ -1170,21 +1304,7 @@ class Editor {
     // the original's fades, so when their sum exceeds the piece duration they
     // scale down proportionally (fadeIn + fadeOut <= duration is validated).
     for (const piece of [left, right]) {
-      const pieceDuration = piece === left ? leftDuration : rightDuration;
-      const inFade = piece.fadeIn;
-      const outFade = piece.fadeOut;
-      if (inFade && outFade) {
-        const fadeSum = add(inFade, outFade);
-        if (gt(fadeSum, pieceDuration)) {
-          const scale = div(pieceDuration, fadeSum);
-          piece.fadeIn = mul(inFade, scale);
-          piece.fadeOut = mul(outFade, scale);
-        }
-      } else if (outFade) {
-        if (gt(outFade, pieceDuration)) piece.fadeOut = pieceDuration;
-      } else if (inFade) {
-        if (gt(inFade, pieceDuration)) piece.fadeIn = pieceDuration;
-      }
+      rescaleFades(piece, piece === left ? leftDuration : rightDuration);
     }
 
     if (clip.timeRemap?.keyframes.length) {
@@ -1234,7 +1354,8 @@ class Editor {
         right.sourceOut = oldOut;
       }
     } else if (clip.kind === 'scene' || clip.kind === 'timeline') {
-      right.sourceIn = add(clip.sourceIn, leftDuration);
+      // Source time advances at local * speed (spec §4 out = in + duration·speed).
+      right.sourceIn = add(clip.sourceIn, mul(leftDuration, clip.speed));
     }
 
     const reserved = new Set<string>();
@@ -1316,8 +1437,18 @@ class Editor {
     copy.start = operation.start !== undefined ? this.time(operation.start, 'duplicate.start') ?? copy.start : clipEnd(found.clip);
     // Deterministic unique ids for copied animations/effects follow the clip id.
     const suffix = `-of-${newId}`;
-    for (const animation of copy.animations) animation.id = `${animation.id}${suffix}`;
+    for (const animation of copy.animations) {
+      animation.id = `${animation.id}${suffix}`;
+      animation.clipId = newId;
+    }
     for (const effect of [...copy.effects, ...copy.audioEffects]) effect.id = `${effect.id}${suffix}`;
+    // A duplicate is an independent clip: it must not ride the original's
+    // link group (CapCut-style AV pairs stay with the original only).
+    if (copy.metadata?.linkId) {
+      const metadata = { ...copy.metadata };
+      delete metadata.linkId;
+      copy.metadata = metadata;
+    }
     found.track.clips.push(copy);
     ensureExtent(this.project, found.timeline, clipEnd(copy), this.autoExtend);
     this.changed.push(newId);
@@ -1437,21 +1568,12 @@ class Editor {
       return;
     }
     const keepTiming = operation.keepTiming ?? 'in-out';
-    const audioKinds = ['audio', 'video'];
-    const visualMediaKinds = ['video', 'image', 'svg'];
-    const resolvedKind = resolved.kind === 'asset' ? resolved.asset.kind : undefined;
-    const targetKind = clip.kind;
-    const compatible =
-      resolved.kind === 'asset'
-        ? targetKind === 'audio'
-          ? audioKinds.includes(resolvedKind ?? '')
-          : visualMediaKinds.includes(resolvedKind ?? '')
-        : resolved.kind === 'generation' || resolved.kind === 'scene';
-    if (!compatible) {
-      this.fail(ErrorCode.REFERENCE_INCOMPATIBLE, `clip "${clip.id}" (${targetKind}) cannot be replaced by "${operation.ref}" (${resolved.kind}${resolvedKind ? ` ${resolvedKind}` : ''})`);
+    if (!refCompatibleWithClip(clip, resolved)) {
+      const resolvedKind = resolved.kind === 'asset' ? resolved.asset.kind : resolved.kind;
+      this.fail(ErrorCode.REFERENCE_INCOMPATIBLE, `clip "${clip.id}" (${clip.kind}) cannot be replaced by "${operation.ref}" (${resolved.kind}${resolvedKind && resolvedKind !== resolved.kind ? ` ${resolvedKind}` : ''})`);
       return;
     }
-    clip.ref = operation.ref.startsWith('gen:') || operation.ref.includes(':') || findAsset(this.project, operation.ref) ? (resolved.kind === 'asset' ? operation.ref : operation.ref) : operation.ref;
+    clip.ref = operation.ref;
     clip.freeze = undefined;
     clip.timeRemap = undefined;
     const sourceDuration = resolved.kind === 'asset' ? resolved.asset.duration : resolved.kind === 'generation' ? resolved.task.constraints.duration : undefined;
@@ -1461,18 +1583,29 @@ class Editor {
       if (sourceDuration && gt(mul(clip.duration, clip.speed), sourceDuration)) {
         this.warn(ErrorCode.TIME_OUT_OF_SOURCE, `clip "${clip.id}" duration exceeds the new source; retime or trim`, clip.id);
       }
-    } else {
-      // Keep the source window; clamp to the new source length when known.
+    } else if (sourceDuration) {
+      // Keep the source window; clamp to the new source length.
+      if (gte(clip.sourceIn, sourceDuration)) {
+        // The kept in-point is at or past the new source's end: restart the
+        // window at the head rather than producing a zero/negative span.
+        this.warn(ErrorCode.TIME_OUT_OF_SOURCE, `clip "${clip.id}" source-in ${fmt(clip.sourceIn)} is past the new source end; the window restarts at 0`, clip.id);
+        clip.sourceIn = ZERO;
+      }
       const window = sub(clipOut(clip), clip.sourceIn);
-      if (sourceDuration && gt(add(clip.sourceIn, window), sourceDuration)) {
+      if (gt(add(clip.sourceIn, window), sourceDuration)) {
         const clamped = sub(sourceDuration, clip.sourceIn);
+        if (!gt(clamped, ZERO)) {
+          this.fail(ErrorCode.TIME_OUT_OF_SOURCE, `clip "${clip.id}" cannot keep timing on a source with no usable media`, clip.id);
+          return;
+        }
         this.warn(ErrorCode.TIME_OUT_OF_SOURCE, `clip "${clip.id}" source window clamped from ${fmt(window)} to ${fmt(clamped)} by the new source`, clip.id);
         clip.sourceOut = add(clip.sourceIn, clamped);
         clip.duration = div(clamped, clip.speed);
       }
     }
-    if (resolved.kind === 'asset' && resolvedKind === 'svg' && clip.kind === 'image') clip.kind = 'svg';
-    if (resolved.kind === 'asset' && resolvedKind === 'image' && clip.kind === 'svg') clip.kind = 'image';
+    const replacedKind = resolved.kind === 'asset' ? resolved.asset.kind : undefined;
+    if (resolved.kind === 'asset' && replacedKind === 'svg' && clip.kind === 'image') clip.kind = 'svg';
+    if (resolved.kind === 'asset' && replacedKind === 'image' && clip.kind === 'svg') clip.kind = 'image';
     this.changed.push(clip.id);
   }
 
@@ -1736,13 +1869,23 @@ class Editor {
       return;
     }
     // Move the earliest clip first so downstream linked propagation and
-    // extent bookkeeping see deterministic intermediate states.
-    for (const found of [...located].sort((a, b) => toNumber(a!.clip.start) - toNumber(b!.clip.start))) {
-      this.apply({
-        op: 'clip.move',
-        clipId: found!.clip.id,
-        start: rat(Math.round((toNumber(found!.clip.start) + delta) * 1_000_000), 1_000_000),
-      });
+    // extent bookkeeping see deterministic intermediate states. Every
+    // selected clip is moved explicitly below, so link-follow is suppressed
+    // inside the selection — otherwise a linked pair would shift twice.
+    const selected = new Set(operation.clipIds);
+    const previousSuppress = this.suppressLinkFollow;
+    this.suppressLinkFollow = selected;
+    try {
+      for (const found of [...located].sort((a, b) => toNumber(a!.clip.start) - toNumber(b!.clip.start))) {
+        this.apply({
+          op: 'clip.move',
+          clipId: found!.clip.id,
+          start: rat(Math.round((toNumber(found!.clip.start) + delta) * 1_000_000), 1_000_000),
+        });
+        if (this.bag.hasErrors) break;
+      }
+    } finally {
+      this.suppressLinkFollow = previousSuppress;
     }
   }
 
@@ -1897,7 +2040,7 @@ class Editor {
           this.fail(ErrorCode.REFERENCE_CYCLE, 'unnest would create a self-referencing timeline');
           return;
         }
-        subClip.start = add(compound.start, subClip.sourceIn ? subClip.start : subClip.start);
+        subClip.start = add(compound.start, subClip.start);
         parentLane.clips.push(subClip);
         moved += 1;
         ensureExtent(this.project, found.timeline, clipEnd(subClip), this.autoExtend);
@@ -2227,7 +2370,9 @@ class Editor {
       }
       speed = parsed;
     }
-    const sourceSpan = clipSourceSpan(clip);
+    // Preserve the source window span (an authored sourceOut wins over the
+    // in + duration·speed default) and retime the clip to expose it.
+    const sourceSpan = sub(clipOut(clip), clip.sourceIn);
     const newDuration = div(sourceSpan, speed);
     if (!gt(newDuration, ZERO)) {
       this.fail(ErrorCode.EDIT_OUT_OF_BOUNDS, 'speed change collapses the clip');
@@ -2265,7 +2410,9 @@ class Editor {
       }
       target = right.clip;
     }
-    const sourceTime = this.time(operation.sourceTime, 'freeze.sourceTime') ?? target.sourceIn;
+    // The frame shown at the split boundary is the clip's local zero: the
+    // source head for forward playback, the source tail for reverse.
+    const sourceTime = this.time(operation.sourceTime, 'freeze.sourceTime') ?? (target.reverse ? clipOut(target) : target.sourceIn);
     target.freeze = sourceTime;
     this.changed.push(target.id);
   }
@@ -2314,7 +2461,21 @@ class Editor {
     if (props.style !== undefined && clip.kind === 'caption') clip.style = props.style;
     if (props.value !== undefined && clip.kind === 'data') clip.value = props.value;
     if (props.ref !== undefined && props.ref !== clip.ref) {
-      clip.ref = props.ref;
+      // Changing the source must re-validate the reference type (spec §3).
+      const resolved = resolveReference(this.project, props.ref);
+      if (!resolved) {
+        this.fail(ErrorCode.REFERENCE_NOT_FOUND, `clip ref "${props.ref}" does not exist`);
+      } else if (!refCompatibleWithClip(clip, resolved)) {
+        this.fail(ErrorCode.REFERENCE_INCOMPATIBLE, `clip "${clip.id}" (${clip.kind}) cannot reference "${props.ref}"`);
+      } else {
+        clip.ref = props.ref;
+        // A different source invalidates the old source window, freeze and
+        // remap — same invariants clip.replace enforces.
+        clip.sourceIn = ZERO;
+        clip.sourceOut = undefined;
+        clip.freeze = undefined;
+        clip.timeRemap = undefined;
+      }
     }
     this.changed.push(clip.id);
   }

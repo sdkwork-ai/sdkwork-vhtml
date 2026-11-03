@@ -17,6 +17,8 @@ export const STUDIO_HTML = `<!doctype html>
   --text:#e8eef9;--muted:#8ea3c2;--accent:#6ee7ff;--accent2:#8b7bff;
   --ok:#42e8a4;--warn:#ffc857;--err:#ff6b81;--clip-scene:#1b6f8a;--clip-video:#1d4f9c;
   --clip-image:#6a3d9e;--clip-audio:#1c7a57;--clip-caption:#8a5a1c;
+  /* Lane label gutter: JS time↔pixel math reads this, keep them in sync. */
+  --lane-label-w:160px;
 }
 *{box-sizing:border-box}
 html,body{height:100%}
@@ -24,6 +26,7 @@ body{margin:0;background:var(--bg);color:var(--text);font:13px/1.45 "Segoe UI",s
 button,input,select,textarea{font:inherit;color:inherit}
 body.embed header{display:none}
 @media (max-width:1100px){
+  :root{--lane-label-w:124px}
   .inspector{width:300px;flex:0 0 300px}
   .lane-label{width:124px;flex:0 0 124px}
   .lane-label small{font-size:10px}
@@ -33,6 +36,7 @@ body.embed header{display:none}
 body.insp-hidden .inspector{display:none !important}
 body.insp-hidden main{grid-template-columns:minmax(0,1fr) 0px}
 @media (max-width:880px){
+  :root{--lane-label-w:104px}
   main{grid-template-columns:minmax(0,1fr) 0px}
   .inspector{position:fixed;right:0;top:0;bottom:0;width:min(340px,92vw);z-index:300;box-shadow:-12px 0 40px rgba(0,0,0,.5);transform:translateX(100%);transition:transform .22s ease}
   body.insp-open .inspector{transform:none}
@@ -55,13 +59,6 @@ button:active:not(:disabled){transform:translateY(1px)}
 #recover-banner{display:none;align-items:center;gap:10px;background:#3a2a10;border-bottom:1px solid #6b5426;color:#ffc46b;padding:8px 16px;font-size:13px}
 #recover-banner.show{display:flex}
 #recover-banner button{padding:4px 12px;font-size:12px}
-#shortcuts-modal{display:none;position:fixed;inset:0;background:rgba(4,8,16,.72);z-index:220;align-items:center;justify-content:center}
-#shortcuts-modal.open{display:flex}
-#shortcuts-modal .sheet{background:#101a2e;border:1px solid #2a3f66;border-radius:14px;padding:22px 26px;width:min(560px,92vw);max-height:80vh;overflow:auto}
-#shortcuts-modal h3{margin:0 0 12px;font-size:16px}
-#shortcuts-modal table{width:100%;border-collapse:collapse;font-size:13px}
-#shortcuts-modal td{padding:4px 8px;border-bottom:1px solid #1c2c4a;color:#b9c8e2}
-#shortcuts-modal td:first-child{color:#6ee7ff;font-family:ui-monospace,monospace;white-space:nowrap}
 button{background:#162236;border:1px solid var(--line2);border-radius:8px;padding:6px 11px;cursor:pointer;transition:.15s}
 button:hover{background:#1d2d46;border-color:#3b567d}
 button:disabled{opacity:.4;cursor:not-allowed}
@@ -194,7 +191,7 @@ main{flex:1 1 auto;display:grid;grid-template-columns:minmax(0,1fr) 300px;min-he
 .ruler-gutter{position:sticky;left:0;top:0;float:left;width:160px;height:28px;margin-right:-160px;z-index:6;background:linear-gradient(180deg,#0c1523,#0a111c);border-right:1px solid var(--line);border-bottom:1px solid var(--line);pointer-events:none}
 .ruler .tick{position:absolute;top:0;bottom:0;border-left:1px solid #22334c;padding-left:4px;font-size:10px;color:#7389a8;overflow:hidden;white-space:nowrap}
 .lane{display:flex;border-bottom:1px solid #131e2e;min-height:44px}
-.lane-label{width:160px;flex:0 0 160px;padding:6px 10px;position:sticky;left:0;z-index:4;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;gap:2px}
+.lane-label{width:var(--lane-label-w);flex:0 0 var(--lane-label-w);padding:6px 10px;position:sticky;left:0;z-index:4;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;justify-content:center;gap:2px}
 .lane-label b{font-size:12px;font-weight:600}
 .lane-label small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
 .lane-track{position:relative;flex:1 1 auto;min-width:0;background:repeating-linear-gradient(90deg,#0a111c 0 39px,#0b1320 39px 40px)}
@@ -387,33 +384,6 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   <span data-i18n="Checkpoint from a previous session found — restore it?">Checkpoint from a previous session found — restore it?</span>
   <button id="recover-restore" data-i18n="Restore">Restore</button>
   <button id="recover-discard" class="ghost" data-i18n="Discard">Discard</button>
-</div>
-<div id="shortcuts-modal">
-  <div class="sheet">
-    <h3 data-i18n="Keyboard shortcuts">Keyboard shortcuts</h3>
-    <table>
-      <tr><td>Space</td><td>Play / pause</td></tr>
-      <tr><td>S</td><td>Split at playhead</td></tr>
-      <tr><td>Q / W</td><td>Trim start / end of the selection to the playhead</td></tr>
-      <tr><td>D</td><td>Duplicate selection</td></tr>
-      <tr><td>Delete / Shift+Delete</td><td>Remove / ripple remove</td></tr>
-      <tr><td>Ctrl+C / X / V</td><td>Copy / cut / paste clipboard</td></tr>
-      <tr><td>I / O</td><td>Set in / out point</td></tr>
-      <tr><td>M</td><td>Add marker</td></tr>
-      <tr><td>J / L</td><td>Shuttle reverse / forward (repeat = faster, up to 8×)</td></tr>
-      <tr><td>K</td><td>Stop shuttle / pause</td></tr>
-      <tr><td>← / →</td><td>Step one frame</td></tr>
-      <tr><td>Home / End</td><td>Jump to start / end</td></tr>
-      <tr><td>Shift+, / Shift+.</td><td>Jump to previous / next marker</td></tr>
-      <tr><td>E</td><td>Element pick mode</td></tr>
-      <tr><td>F</td><td>Fullscreen stage</td></tr>
-      <tr><td>T</td><td>Add transition</td></tr>
-      <tr><td>C</td><td>Add caption at playhead</td></tr>
-      <tr><td>Ctrl+= / Ctrl− / Ctrl+0</td><td>Zoom in / out / fit</td></tr>
-      <tr><td>Ctrl+Z / Ctrl+Shift+Z</td><td>Undo / redo</td></tr>
-      <tr><td>?</td><td>This help</td></tr>
-    </table>
-  </div>
 </div>
 <main>
   <section class="stage-panel">
@@ -610,6 +580,14 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   'use strict';
   var state = { model:null, selected:null, selection:[], time:0, playing:false, zoom:1, revision:0, frameReady:false, exportJob:null, dragging:null, tab:'props', assets:[], assetSummary:null, assetSelected:null, snapping:true, wysiwyg:null, pickElement:false, element:null, elementDraft:null, inPoint:null, outPoint:null, guides:false, presets:[], peaks:{}, posters:{}, ctxFor:null, trDraft:null, replaceArmed:null, autoScrollDir:0, autoScrollTimer:null, shuttle:0, shuttleTimer:null, loop:false, timelineStack:[], attributeClipboard:null, assetSearch:'', assetFavoritesOnly:false, laneFocus:null, canvasDrag:null, laneHeights:(function(){ try { return JSON.parse(localStorage.getItem('vhtml-lane-heights') || '{}') || {}; } catch (error) { return {}; } })() };
   var el = function(id){ return document.getElementById(id); };
+  // Lane-label gutter in px — mirrors the CSS --lane-label-w (responsive).
+  var GUTTER = 160;
+  function refreshGutter(){
+    var parsed = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--lane-label-w'), 10);
+    if (isFinite(parsed) && parsed > 0) GUTTER = parsed;
+  }
+  refreshGutter();
+  window.addEventListener('resize', refreshGutter);
   var stage = el('stage');
   var tracksEl = el('tracks');
   var ruler = el('ruler');
@@ -776,7 +754,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 
   function pps(){
     if (!state.model) return 100;
-    var available = Math.max(400, el('timeline-scroll').clientWidth - 180);
+    var available = Math.max(400, el('timeline-scroll').clientWidth - GUTTER - 20);
     return Math.max(6, (available / Math.max(0.2, state.model.duration)) * state.zoom);
   }
 
@@ -786,7 +764,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     var duration = state.model.duration;
     // Cover the whole visible timeline: the content span, or the viewport
     // when the project is shorter than it (no bare background past the end).
-    var viewportSpan = document.getElementById('timeline-scroll').clientWidth - 160;
+    var viewportSpan = document.getElementById('timeline-scroll').clientWidth - GUTTER;
     ruler.style.width = Math.max(1, duration * rate, viewportSpan) + 'px';
     var target = 90 / rate;
     var steps = [0.1,0.2,0.25,0.5,1,2,5,10,15,30,60,120,300];
@@ -817,7 +795,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         event.stopPropagation();
         var name = window.prompt('Marker name', marker.name || '');
         if (name === null) return;
-        edit([{ op:'marker.remove', timelineId:state.model.id && markerTimelineId(), markerId:marker.id }, { op:'marker.add', timelineId:markerTimelineId(), marker:{ id:marker.id, time:marker.time, name:name, type:marker.type, color:marker.color, metadata:marker.metadata } }]).catch(function(){});
+        edit([{ op:'marker.remove', timelineId:markerTimelineId(), markerId:marker.id }, { op:'marker.add', timelineId:markerTimelineId(), marker:{ id:marker.id, time:marker.time, name:name, type:marker.type, color:marker.color, metadata:marker.metadata } }]).catch(function(){});
       };
       ruler.appendChild(flag);
     });
@@ -836,7 +814,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     }
     var rate = pps();
     band.style.display = 'block';
-    band.style.left = (160 + state.inPoint * rate) + 'px';
+    band.style.left = (GUTTER + state.inPoint * rate) + 'px';
     band.style.width = Math.max(2, (state.outPoint - state.inPoint) * rate) + 'px';
   }
 
@@ -920,6 +898,16 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       var track = document.createElement('div');
       track.className = 'lane-track';
       track.style.width = width + 'px';
+      // Empty-track right-click (paste here / add marker / delete lane).
+      // Clip blocks stopPropagation on their own menu, so this only fires
+      // on bare track area; locked lanes stay protected.
+      track.oncontextmenu = function(event){
+        if (lane.locked) return;
+        if (event.target.closest && event.target.closest('.clip')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        openContextMenu(event, { type:'track-empty', lane:lane });
+      };
       track.dataset.laneId = lane.id;
       track.addEventListener('dragover', function(event){
         var types = event.dataTransfer.types || [];
@@ -1779,10 +1767,12 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         var up = function(){
           circle.removeEventListener('pointermove', move);
           circle.removeEventListener('pointerup', up);
+          circle.removeEventListener('pointercancel', up);
           commit();
         };
         circle.addEventListener('pointermove', move);
         circle.addEventListener('pointerup', up);
+        circle.addEventListener('pointercancel', up);
       });
     }
     svg.addEventListener('pointerdown', function(event){
@@ -3560,9 +3550,6 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 
   // ---------- adjustment layer (调节层 · lane-level effects) ----------
 
-  function laneById(id){
-    return (state.model.lanes || []).filter(function(lane){ return lane.id === id; })[0] || null;
-  }
   function focusLaneAdjustment(laneId){
     selectOnly(null);
     clearElementSelection();
@@ -3828,10 +3815,12 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         var up = function(){
           circle.removeEventListener('pointermove', move);
           circle.removeEventListener('pointerup', up);
+          circle.removeEventListener('pointercancel', up);
           commit();
         };
         circle.addEventListener('pointermove', move);
         circle.addEventListener('pointerup', up);
+        circle.addEventListener('pointercancel', up);
       });
     }
     svg.addEventListener('pointerdown', function(event){
@@ -4593,7 +4582,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         state.wysiwyg = null;
         state.element = snapshotStageElement(root, event.target, path, layer ? layer.dataset.clipId : null);
         state.elementDraft = elementDraftFrom(state.element);
-        state.selected = layer ? layer.dataset.clipId : state.selected;
+        if (layer && layer.dataset.clipId) selectOnly(layer.dataset.clipId);
         state.tab = 'element';
         renderTimeline();
         renderInspector();
@@ -5374,7 +5363,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       var row = document.createElement('div');
       row.className = 'caption-row';
       row.innerHTML = '<b>' + fmtTime(entry.clip.start).slice(3) + '</b><span>' + escapeHtml(entry.clip.text || '(empty)') + '</span>';
-      row.onclick = function(){ clearElementSelection(); state.selected = entry.clip.id; state.tab = 'props'; renderTimeline(); renderInspector(); updateSelectionBox(); };
+      row.onclick = function(){ clearElementSelection(); selectOnly(entry.clip.id); state.tab = 'props'; renderTimeline(); renderInspector(); updateSelectionBox(); };
       box.appendChild(row);
     });
   }
@@ -5443,13 +5432,13 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   }
   /** Escape a URL/asset path for safe use inside a CSS url("...") value. */
   function cssUrl(value){
-    return String(value == null ? '' : value).replace(/[\\"]/g,'\\$&').replace(/\(/g,'%28').replace(/\)/g,'%29');
+    return String(value == null ? '' : value).replace(/[\\"]/g,'\\$&').replace(/\\(/g,'%28').replace(/\\)/g,'%29');
   }
 
   function updatePlayhead(){
     if (!state.model) return;
     var rate = pps();
-    playhead.style.left = (160 + state.time * rate) + 'px';
+    playhead.style.left = (GUTTER + state.time * rate) + 'px';
     // Height comes from the CSS (top:0/bottom:0) so the playhead always
     // spans the ruler plus the actual lane stack, including resized lanes.
     el('time').textContent = fmtTime(state.time);
@@ -5534,7 +5523,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 
   function showSnapGuide(time){
     if (time === null || time === undefined){ snapGuide.style.display = 'none'; return; }
-    snapGuide.style.left = (160 + time * pps()) + 'px';
+    snapGuide.style.left = (GUTTER + time * pps()) + 'px';
     snapGuide.style.display = 'block';
   }
 
@@ -5613,7 +5602,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
 
   function timeFromClientX(clientX){
     var inner = el('timeline-inner').getBoundingClientRect();
-    return Math.max(0, (clientX - inner.left - 160) / pps());
+    return Math.max(0, (clientX - inner.left - GUTTER) / pps());
   }
 
   function openContextMenu(event, target){
@@ -5971,9 +5960,9 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     var list = ids && ids.length ? ids : selectionIds();
     if (!list.length) return toast(t('Select a clip to remove'), true);
     var ops = list.map(function(id){ return { op: ripple && list.length === 1 ? 'clip.rippleDelete' : 'clip.remove', clipId:id }; });
-    edit(ops).catch(function(){});
-    selectOnly(null);
-    renderInspector();
+    // Selection clears only on success — a rejected edit keeps the clips
+    // selectable (an optimistic clear desynced timeline and inspector).
+    edit(ops).then(function(){ selectOnly(null); renderInspector(); }).catch(function(){});
   }
 
   function splitClipIds(ids){
@@ -6604,19 +6593,19 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
   }
 
   function setZoom(value, anchorClientX){
-    value = Math.max(0.5, Math.min(12, value));
+    value = Math.max(0.05, Math.min(12, value));
     var scroll = el('timeline-scroll');
     var rect = scroll.getBoundingClientRect();
     var anchorX = anchorClientX === undefined ? rect.left + rect.width / 2 : anchorClientX;
     var oldRate = pps();
     var contentX = scroll.scrollLeft + (anchorX - rect.left);
-    var timeAtAnchor = (contentX - 160) / oldRate;
+    var timeAtAnchor = (contentX - GUTTER) / oldRate;
     state.zoom = value;
     el('zoom').value = String(value);
     el('zoomlabel').textContent = value.toFixed(1) + '×';
     renderTimeline();
     var newRate = pps();
-    scroll.scrollLeft = Math.max(0, timeAtAnchor * newRate + 160 - (anchorX - rect.left));
+    scroll.scrollLeft = Math.max(0, timeAtAnchor * newRate + GUTTER - (anchorX - rect.left));
   }
 
   function parseTimeInput(text){
@@ -6825,7 +6814,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       w.layer.style.transformOrigin = '50% 50%';
       requestAnimationFrame(updateSelectionBox);
     });
-    window.addEventListener('pointerup', function(){
+    var finishWysiwyg = function(){
       if (!state.wysiwyg) return;
       var w = state.wysiwyg;
       state.wysiwyg = null;
@@ -6836,7 +6825,9 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
         try { w.layer.style.transform = transformString(w.original); } catch (error) {}
         updateSelectionBox();
       });
-    });
+    };
+    window.addEventListener('pointerup', finishWysiwyg);
+    window.addEventListener('pointercancel', finishWysiwyg);
   }
 
   function loadStage(){
@@ -6865,13 +6856,13 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     if (!autoScrollPlayback || !state.playing || !state.model) return;
     var scroll = el('timeline-scroll');
     var rate = pps();
-    var playheadX = 160 + state.time * rate;
+    var playheadX = GUTTER + state.time * rate;
     var viewLeft = scroll.scrollLeft;
     var viewRight = viewLeft + scroll.clientWidth;
     if (playheadX > viewRight - 60){
-      scroll.scrollLeft = Math.max(0, playheadX - 160 - 40);
-    } else if (playheadX < viewLeft + 160){
-      scroll.scrollLeft = Math.max(0, playheadX - 160 - 40);
+      scroll.scrollLeft = Math.max(0, playheadX - GUTTER - 40);
+    } else if (playheadX < viewLeft + GUTTER){
+      scroll.scrollLeft = Math.max(0, playheadX - GUTTER - 40);
     }
   }
   var pollTimer = null;
@@ -7158,7 +7149,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       body:JSON.stringify({ assetId:asset.id, trackId:lane.id, start:start === undefined ? snap(state.time) : start, mode:(document.getElementById('place-mode') || {}).value || 'add' })
     }).then(function(body){
       applyProjectResponse(body);
-      state.selected = body.clip ? body.clip.id : state.selected;
+      if (body.clip) selectOnly(body.clip.id);
       renderTimeline(); renderInspector(); updateSelectionBox();
       toast('Added ' + asset.id + ' to ' + (lane.name || lane.id));
       return body;
@@ -7175,7 +7166,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       body:JSON.stringify({ text:text, start:snap(state.time), duration:2 })
     }).then(function(body){
       applyProjectResponse(body);
-      state.selected = body.clip ? body.clip.id : state.selected;
+      if (body.clip) selectOnly(body.clip.id);
       state.tab = 'props';
       renderTimeline(); renderInspector();
       toast(t('Caption added'));
@@ -7512,6 +7503,9 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     window.addEventListener('pointermove', function(event){
       if (!state.dragging) return;
       if (state.dragging.type === 'scrub'){
+        // Edge auto-scroll: dragging the playhead past the viewport must be
+        // able to reach off-screen time (professional NLE behavior).
+        ensureAutoScroll(event);
         seek(magnetTime((event.clientX - ruler.getBoundingClientRect().left) / pps(), null, event.shiftKey), true);
         return;
       }
@@ -7734,7 +7728,7 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       state.dragging = { type:'lane-reorder', laneId:trackNode.dataset.laneId, startY:event.clientY, moved:false, targetIndex:null };
       event.preventDefault();
     });
-    window.addEventListener('pointerup', function(event){
+    var finishDrag = function(event){
       if (!state.dragging) return;
       var drag = state.dragging;
       state.dragging = null;
@@ -7806,14 +7800,18 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       }
       if (drag.type === 'kf-diamond'){
         if (!drag.moved || drag.previewAbs === undefined) return;
-        var nextAnimations = drag.clip.animations.map(function(candidate){
+        // Re-read the clip at commit time: an edit landed while the drag ran
+        // (undo, inspector change) must not be clobbered by drag-start state.
+        var liveKf = clipById(drag.clip.id);
+        if (!liveKf) return;
+        var nextAnimations = liveKf.clip.animations.map(function(candidate){
           if (candidate.id !== drag.animId) return candidate;
           var copy = JSON.parse(JSON.stringify(candidate));
           var kf = copy.keyframes[drag.kfIndex];
           if (!kf) return candidate;
           var local = drag.timeBase === 'project'
             ? drag.previewAbs - copy.start
-            : drag.previewAbs - drag.clip.start - copy.start;
+            : drag.previewAbs - liveKf.clip.start - copy.start;
           kf.time = Math.max(0, Number(local.toFixed(6)));
           copy.keyframes.sort(function(a,b){ return a.time - b.time; });
           return copy;
@@ -7832,7 +7830,9 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       }
       if (drag.type === 'volume-dot'){
         if (!drag.moved || drag.previewValue === undefined) return;
-        setVolumeKeyframe(drag.clip, drag.animId, drag.kfIndex, drag.previewTime, drag.previewValue)
+        var liveVd = clipById(drag.clip.id);
+        if (!liveVd) return;
+        setVolumeKeyframe(liveVd.clip, drag.animId, drag.kfIndex, drag.previewTime, drag.previewValue)
           .then(function(){ toast(t('Volume point updated')); }).catch(function(){});
         return;
       }
@@ -7876,10 +7876,22 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       } else {
         edit([{ op:'clip.trim', clipId:drag.clip.id, duration:drag.previewDuration }]);
       }
-    });
+    };
+    window.addEventListener('pointerup', finishDrag);
+    // Palm rejection / OS gestures: commit through the normal path instead of
+    // leaving state.dragging set (a stuck drag kept scrubbing on stray moves).
+    window.addEventListener('pointercancel', finishDrag);
   }
 
-  function fitTimeline(){ state.zoom = 1; el('zoom').value = '1'; renderTimeline(); }
+  function fitTimeline(){
+    // Zoom-to-fit: scale the whole project into the visible viewport
+    // (previously this merely reset to 1x, so Ctrl+0 never fit anything).
+    if (!state.model) return;
+    var scroll = el('timeline-scroll');
+    var available = Math.max(200, scroll.clientWidth - GUTTER - 24);
+    var duration = Math.max(0.2, state.model.duration || 1);
+    setZoom(available / duration);
+  }
   function setupZoom(){
     el('zoom').addEventListener('input', function(){
       state.zoom = parseFloat(el('zoom').value);
@@ -8132,15 +8144,25 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     }).catch(function(error){ state.exportJob = null; el('exp-cancel-job').style.display = 'none'; toast(error.message, true); });
   }
 
+  function anyModalOpen(){
+    return ['export-modal','transition-modal','settings-modal','help-modal','mixer-modal','history-modal']
+      .some(function(id){ var node = el(id); return node && node.classList.contains('open'); });
+  }
   function setupKeys(){
     document.addEventListener('keydown', function(event){
       var tag = (event.target.tagName || '').toLowerCase();
-      var modalOpen = el('export-modal').classList.contains('open') || el('transition-modal').classList.contains('open') || el('settings-modal').classList.contains('open') || el('help-modal').classList.contains('open') || el('mixer-modal').classList.contains('open');
+      var modalOpen = anyModalOpen();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || event.target.isContentEditable) return;
-      if (event.key === '?' || (event.shiftKey && (event.key === '/' || event.code === 'Slash'))){ event.preventDefault(); toggleHelp(); return; }
+      if (event.key === '?' || (event.shiftKey && (event.key === '/' || event.code === 'Slash'))){
+        event.preventDefault();
+        if (modalOpen) return; // help is itself a modal — never stack it
+        toggleHelp();
+        return;
+      }
       if (event.key === 'Escape'){
         if (el('ctx-menu').style.display === 'block'){ closeContextMenu(); return; }
         if (el('help-modal').classList.contains('open')){ toggleHelp(false); return; }
+        if (el('history-modal').classList.contains('open')){ el('history-modal').classList.remove('open'); return; }
         if (el('settings-modal').classList.contains('open')){ el('settings-modal').classList.remove('open'); return; }
         if (el('export-modal').classList.contains('open')){ closeExport(); return; }
         if (el('transition-modal').classList.contains('open')){ el('transition-modal').classList.remove('open'); state.trDraft = null; return; }
@@ -8182,20 +8204,24 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       if ((event.ctrlKey || event.metaKey) && (event.key === 'c' || event.key === 'C')){ event.preventDefault(); copySelected(false); return; }
       if ((event.ctrlKey || event.metaKey) && (event.key === 'x' || event.key === 'X')){ event.preventDefault(); copySelected(true); return; }
       if ((event.ctrlKey || event.metaKey) && (event.key === 'v' || event.key === 'V')){ event.preventDefault(); pasteClipboard(); return; }
-      if (event.key === '?' || (event.shiftKey && (event.key === '/' || event.key === '?'))){ event.preventDefault(); document.getElementById('shortcuts-modal').classList.toggle('open'); return; }
       if (event.shiftKey && event.key === ','){ event.preventDefault(); seekNearestMarker(-1); return; }
       if (event.shiftKey && event.key === '.'){ event.preventDefault(); seekNearestMarker(1); return; }
-      if (event.key === 'Escape'){ document.getElementById('shortcuts-modal').classList.remove('open'); }
-      if (modalOpen) return;
+      if (modalOpen){ stopShuttle(); return; }
       if ((event.ctrlKey || event.metaKey) && (event.key === '=' || event.key === '+')){ event.preventDefault(); setZoom(state.zoom * 1.25); return; }
       if ((event.ctrlKey || event.metaKey) && event.key === '-'){ event.preventDefault(); setZoom(state.zoom / 1.25); return; }
       if ((event.ctrlKey || event.metaKey) && event.key === '0'){ event.preventDefault(); fitTimeline(); return; }
+      if (event.key === '+' || event.key === '='){ event.preventDefault(); setZoom(state.zoom * 1.25); return; }
+      if (event.key === '-' || event.key === '_'){ event.preventDefault(); setZoom(state.zoom / 1.25); return; }
+      if (event.key === '0'){ event.preventDefault(); fitTimeline(); return; }
       if ((event.ctrlKey || event.metaKey) && (event.key === 'z' || event.key === 'Z')){
         event.preventDefault();
+        // An undo mid-gesture would swap the model under the pointer; the
+        // commit would then write stale previews (CapCut blocks it too).
+        if (state.dragging || state.wysiwyg) return;
         if (event.shiftKey) redo(); else undo();
         return;
       }
-      if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || event.key === 'Y')){ event.preventDefault(); redo(); return; }
+      if ((event.ctrlKey || event.metaKey) && (event.key === 'y' || event.key === 'Y')){ event.preventDefault(); if (!state.dragging && !state.wysiwyg) redo(); return; }
       if (event.ctrlKey || event.metaKey) return;
       if (event.key === 'e' || event.key === 'E'){ setPickMode(!state.pickElement); return; }
       if (event.code === 'Space'){
@@ -8262,11 +8288,6 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
       }
     });
   }
-
-  document.addEventListener('click', function(event){
-    var modal = document.getElementById('shortcuts-modal');
-    if (modal && modal.classList.contains('open') && event.target === modal) modal.classList.remove('open');
-  });
 
   function loadPresets(){
     return api('/api/presets').then(function(body){
@@ -8358,7 +8379,11 @@ body.looping #loop{border-color:var(--ok);color:var(--ok);background:#102b24}
     el('history-close').onclick = function(){ el('history-modal').classList.remove('open'); };
     el('history-refresh').onclick = function(){ loadHistory(); };
     el('history-pin').onclick = pinVersion;
-    el('timeline-back').onclick = function(){ selectEditingTimeline(null, false); };
+    el('timeline-back').onclick = function(){
+      // Nested compounds pop level by level; an empty stack returns to main.
+      var previous = state.timelineStack.length ? state.timelineStack[state.timelineStack.length - 1] : null;
+      selectEditingTimeline(previous, false);
+    };
     el('settings-close').onclick = function(){ el('settings-modal').classList.remove('open'); };
     el('settings-cancel').onclick = function(){ el('settings-modal').classList.remove('open'); };
     el('settings-save').onclick = saveSettings;

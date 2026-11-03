@@ -230,6 +230,8 @@ const zh: Record<string, string> = {
   'Batch export complete (': '批量导出完成（',
   ' presets)': ' 个预设）',
   'Export complete': '导出完成',
+  'Export cancelled': '导出已取消',
+  'Cancel export': '取消导出',
   'open ': '打开 ',
   'captions': '字幕',
   'report': '报告',
