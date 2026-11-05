@@ -48,3 +48,11 @@ examples/**/*.autosave
 # Temporary local media dumps in examples (never commit)
 examples/**/tmp-*
 examples/**/*.autosave
+
+# ---- secret material (never commit) ----
+*.key
+*.pem
+*.p12
+*.pfx
+*.keystore
+secrets/
